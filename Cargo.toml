@@ -1,0 +1,19 @@
+[package]
+name = "window-side"
+version = "0.1.0"
+edition = "2024"
+description = "Run your dual-boot Windows install as a headless VM from Linux"
+license = "MIT"
+repository = "https://github.com/Noelithub77/window-side"
+
+[[bin]]
+name = "ws"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+clap = { version = "4.6.7", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.1.8"

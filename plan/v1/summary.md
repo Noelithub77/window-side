@@ -51,5 +51,12 @@ flags so agents can run it without the window.
 
 ## Dependencies
 
-`clap`, `serde`, `serde_json`, `toml`, `anyhow`, `base64`, `secret-service`
-(as in leet), `gpui-kit`. File locking uses `std::fs::File::lock`.
+`clap`, `serde`, `serde_json`, `toml`, `anyhow`, `base64`, `gpui-kit`. The
+keyring goes through `secret-tool`, and file locking uses `std::fs::File::lock`.
+
+Host tools called at runtime: `virsh`, `lsblk`, `findmnt`, `udisksctl`,
+`secret-tool`, `curl`, `bsdtar`, `xorriso`, `virt-viewer` or
+`looking-glass-client`, and `hyprctl` when Hyprland runs.
+
+Phase 1 drops two SPICE-only measurement tools from the old scripts:
+`frames` and `display-check`.
