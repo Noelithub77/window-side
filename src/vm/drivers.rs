@@ -5,6 +5,35 @@ use crate::vm::virsh;
 use anyhow::{Context, Result, bail};
 use std::fs;
 use std::path::PathBuf;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+
+/// Present an empty readonly VirtIO disk so Windows binds viostor before its boot disk changes.
+pub fn prime_storage(domain: &str) -> Result<()> {
+    let uid = fs::metadata("/proc/self")?.uid();
+    let path = std::env::temp_dir().join(format!("window-side-virtio-{uid}.img"));
+    let source = path.display().to_string();
+    let blocks = virsh::run(&["domblklist", domain, "--details"])?;
+    if let Some(line) = blocks.lines().find(|line| line.split_whitespace().nth(2) == Some("vdz")) {
+        if line.split_whitespace().last() != Some(source.as_str()) {
+            bail!("The temporary VirtIO target vdz is already in use");
+        }
+        return Ok(());
+    }
+    match fs::OpenOptions::new().write(true).create_new(true).mode(0o644).open(&path) {
+        Ok(file) => file.set_len(32 * 1024 * 1024)?,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let meta = path.symlink_metadata()?;
+            if !meta.is_file() || meta.uid() != uid || meta.nlink() != 1 || meta.len() != 32 * 1024 * 1024 {
+                bail!("The temporary VirtIO disk is not an owned regular scratch file");
+            }
+        },
+        Err(error) => return Err(error.into()),
+    }
+    virsh::run(&["attach-disk", domain, &source, "vdz", "--targetbus", "virtio", "--driver", "qemu",
+        "--subdriver", "raw", "--mode", "readonly", "--sourcetype", "file", "--live"])
+        .context("Could not present the temporary VirtIO driver disk")?;
+    Ok(())
+}
 
 const DRIVERS_URL: &str =
     "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win-guest-tools.exe";
@@ -25,7 +54,7 @@ pub fn attach(domain: &str) -> Result<()> {
     let runtime = runtime_iso();
     let runtime_path = runtime.display().to_string();
     if virsh::run(&["domblklist", domain, "--details"])?.contains(&runtime_path) {
-        println!("The window-side driver CD is already attached.");
+        eprintln!("The window-side driver CD is already attached.");
         return Ok(());
     }
     let cache = cache_dir();
@@ -42,7 +71,7 @@ pub fn attach(domain: &str) -> Result<()> {
     let build = cache.join("window-side-drivers.iso.new");
     let _ = fs::remove_file(&build);
     text("xorriso", &[
-        "-as", "mkisofs", "-quiet", "-V", "WINDOW_SIDE_DRIVERS", "-graft-points",
+        "-as", "mkisofs", "-quiet", "-J", "-r", "-V", "WSDRIVERS", "-graft-points",
         &format!("virtio-win-guest-tools.exe={}", installer.display()), "-o", &build.display().to_string(),
     ])
     .context("Could not build the driver CD.")?;

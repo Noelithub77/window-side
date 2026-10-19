@@ -159,6 +159,7 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
         disk,
         gpu: gpu.map(|gpu| Gpu { address: gpu.address.clone(), audio_address: gpu.audio_address.clone(), ids: gpu.ids.clone() }),
         windows: Windows {
+            provisioned: same_disk && existing.is_some_and(|config| config.windows.provisioned),
             user: existing.map_or_else(|| system.user.clone(), |config| config.windows.user.clone()),
             refresh_hz: system.refresh_hz.clone(),
         },
@@ -258,15 +259,24 @@ pub fn apply(plan: &Plan) -> Result<()> {
     Ok(())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PluginInstall {
+    Installed,
+    ManagedExternally,
+}
+
 /// Installs the bundled panel; a plugin folder linked from elsewhere (dotfiles) is left alone.
-pub fn install_plugin() -> Result<()> {
+pub fn install_plugin() -> Result<PluginInstall> {
     let folder = home().join(".config/omarchy/plugins").join(PLUGIN_ID);
-    if folder.symlink_metadata().is_ok_and(|meta| meta.file_type().is_symlink()) {
-        return Ok(());
+    let linked = |path: &Path| path.symlink_metadata().is_ok_and(|meta| meta.file_type().is_symlink());
+    if linked(&folder) || PLUGIN.iter().any(|(name, _)| linked(&folder.join(name))) {
+        return Ok(PluginInstall::ManagedExternally);
     }
     fs::create_dir_all(&folder)?;
     for (name, contents) in PLUGIN {
         fs::write(folder.join(name), contents)?;
     }
-    text("omarchy", &["plugin", "enable", PLUGIN_ID]).map(drop).context("Could not enable the Omarchy plugin")
+    text("omarchy", &["plugin", "enable", PLUGIN_ID]).context("Could not enable the Omarchy plugin")?;
+    Ok(PluginInstall::Installed)
 }

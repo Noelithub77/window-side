@@ -70,6 +70,9 @@ pub struct Gpu {
 #[serde(deny_unknown_fields)]
 pub struct Windows {
     pub user: String,
+    /// False until first-boot provisioning and the VirtIO reboot have been verified.
+    #[serde(default = "enabled")]
+    pub provisioned: bool,
     /// Refresh rate given to the Looking Glass virtual display, as Windows expects it.
     pub refresh_hz: String,
 }
@@ -108,6 +111,10 @@ impl Config {
         let text = fs::read_to_string(&path)
             .with_context(|| format!("Run `ws setup` first; {} is missing", path.display()))?;
         toml::from_str(&text).with_context(|| format!("{} is invalid", path.display()))
+    }
+
+    pub fn needs_first_boot(&self) -> bool {
+        !self.vm.virtio || !self.windows.provisioned
     }
 
     /// The block device libvirt gives to Windows.
@@ -175,5 +182,12 @@ mod tests {
         assert_eq!(config.boot.gpu_entry, "Omarchy/window-side-gpu");
         assert!(config.hooks.before_start.is_empty());
         assert_eq!(config.disk_link(), PathBuf::from("/dev/disk/by-id/nvme-eui.1"));
+        assert!(!config.needs_first_boot());
+        let mut pending = config.clone();
+        pending.vm.virtio = false;
+        assert!(pending.needs_first_boot());
+        pending.vm.virtio = true;
+        pending.windows.provisioned = false;
+        assert!(pending.needs_first_boot());
     }
 }

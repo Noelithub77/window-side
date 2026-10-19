@@ -60,6 +60,18 @@ shot appearance-dismissed '7[.]4[[:space:]]*GiB'
 # Read the window surface itself, outside text/controls; proves teal's near-black base.
 magick "$output/status.png" -format '%[pixel:p{30,760}]' info: > "$output/background.txt"
 rg -q '0,0,0|#000000' "$output/background.txt"
+key ctrl+q
+omabox wait -b "$box" --timeout 10s window class:window-side --gone >/dev/null
+start first-boot-start
+shot first-boot-start 'Not started'
+key Tab Tab space
+shot first-boot-drivers 'Drivers needed'
+key ctrl+q
+omabox wait -b "$box" --timeout 10s window class:window-side --gone >/dev/null
+start first-boot-ready
+shot first-boot-ready 'Ready to finish'
+key Tab Tab space
+shot first-boot-complete '7[.]4[[:space:]]*GiB'
 jq -n --arg artifacts "$output" '{environment:"isolated-omabox", success:true,
-  checked:["setup steps by keyboard","back navigation","radio selection","slider and keyboard resource changes in review","review before apply","Windows status pixels","keyboard appearance menu and dismissal","black teal surface"],
+  checked:["setup steps by keyboard","back navigation","radio selection","slider and keyboard resource changes in review","review before apply","Windows status pixels","keyboard appearance menu and dismissal","black teal surface","first boot keyboard start and driver instructions","first boot restart returns to status"],
   hostSetupApplied:false, guestActionsRun:false, artifacts:$artifacts}' | tee "$output/result.json"

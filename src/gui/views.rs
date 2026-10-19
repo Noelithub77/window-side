@@ -165,6 +165,9 @@ impl WindowSide {
     }
 
     pub(super) fn status_view(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.first_boot.is_some() || self.config.as_ref().is_some_and(|config| config.needs_first_boot()) {
+            return self.first_boot_view(cx);
+        }
         let running = self.metrics.running();
         let busy = self.action.is_some();
         let known = matches!(self.metrics.state(), "Running" | "Stopped");

@@ -66,10 +66,26 @@ pub(super) fn plan(choices: &crate::setup::Choices) -> crate::setup::Plan {
             disk: Disk { mode: DiskMode::Whole, id: "fixture-drive".into(), windows_partition_uuid: "fixture-windows".into() },
             gpu: choices.gpu.as_ref().map(|address| Gpu { address: address.clone(), audio_address: Some("0000:01:00.1".into()),
                 ids: vec!["10de:28a0".into()] }),
-            windows: Windows { user: String::new(), refresh_hz: "165".into() }, boot: Boot::default(), hooks: Hooks::default(),
+            windows: Windows { provisioned: false, user: String::new(), refresh_hz: "165".into() }, boot: Boot::default(), hooks: Hooks::default(),
         },
         domain_xml: String::new(), plugin: choices.plugin,
         root: crate::setup::root::RootPlan { user: "fixture".into(), packages: vec![], groups: vec![], files: vec![], virtual_disk: None, gpu_kernel: None },
         notes: choices.gpu.as_ref().map(|_| "The GPU profile reserves the selected GPU for Windows until Linux restarts in the normal profile.".into()).into_iter().collect(),
+    }
+}
+
+
+pub(super) fn first_boot(mode: &str) -> crate::first_boot::Status {
+    use crate::first_boot::{Stage, Status};
+    let stage = match mode {
+        "drivers" => Stage::Drivers,
+        "sign-in" => Stage::SignIn,
+        "ready" => Stage::Ready,
+        _ => Stage::Start,
+    };
+    Status {
+        environment: "isolated-omabox".into(), domain: "fixture".into(), stage,
+        storage_ready: Some(matches!(stage, Stage::Ready | Stage::SignIn)),
+        network_ready: Some(matches!(stage, Stage::Ready | Stage::SignIn)),
     }
 }

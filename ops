@@ -7,7 +7,9 @@ case "${1:---help}" in
     cat <<'HELP'
 Usage: ./ops <command>
 
-  check                 Run unit tests and Clippy; no VM or desktop actions
+  check                 Run unit tests, Clippy and CLI fixtures; no VM or desktop actions
+  test:first-boot        Check readiness and rollback with a fake guest
+  guest:check            Read-only script/guard/driver checks in the running QEMU guest
   build                 Build the native ws binary with the existing Cargo cache
   gui:test --output DIR Check teal setup/status pixels and keyboard navigation in OmaBox
 
@@ -19,7 +21,11 @@ HELP
   check)
     cargo test -j 2
     cargo clippy -j 2 --all-targets -- -D warnings
+    cargo build -j 2
+    exec bash "$root/tests/first-boot.sh"
     ;;
+  test:first-boot) exec bash "$root/tests/first-boot.sh" ;;
+  guest:check) exec bash "$root/tests/guest-check.sh" ;;
   build) exec cargo build -j 2 ;;
   gui:test) shift; exec "$root/scripts/gui-test.sh" "$@" ;;
   *) echo 'Use ./ops --help' >&2; exit 2 ;;

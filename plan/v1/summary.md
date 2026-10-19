@@ -79,7 +79,8 @@ Theme definitions live in `src/gui/theme.rs`; views read semantic tokens.
 `appearance.toml` stores only the appearance choice beside the machine config.
 Normal CLI commands keep their terminal behavior; bare `ws` opens the window.
 
-The first-boot driver and guest provisioning flow remains phase 4. Public
+The first-boot driver and guest provisioning flow is implemented in phase 4;
+its fresh-install and native-boot runtime checks remain open. Public
 release packaging remains phase 5; a working window does not prove those flows.
 
 ### Phase 3 verification, 19 October 2026
@@ -93,3 +94,35 @@ release packaging remains phase 5; a working window does not prove those flows.
   privileged setup, Windows boot, GPU handoff or live desktop launch was tested.
 - The installed global `ws` still uses the legacy launcher. The new window is
   available from this checkout's `target/debug/ws`; installer migration is pending.
+
+
+### Phase 4 implementation, 20 October 2026
+
+- Added shared first-boot readiness, compatibility boot, explicit finish and
+  stopped-only SATA recovery. No new dependencies or Python were added.
+- First boot detects the Windows console user, verifies live viostor and staged
+  NetKVM, disables hibernation/Fast Startup, installs the matching Looking Glass
+  display when configured, and registers a VM-aware display startup task.
+- The VirtIO transition uses a readonly scratch disk, a clean shutdown, saved
+  recovery files, and guest-agent readback after the cold start. Completion is
+  stored separately from the selected disk bus, so failed verification remains
+  pending. Original power values are saved inside Windows.
+- The desktop shows first-boot steps only for pending installs. Its restart
+  control explicitly says it closes Windows apps. Existing completed configs
+  keep the normal status view; old configs remain compatible.
+- `setup plugin` installs bundled assets or reports externally managed links;
+  it preserves both directory and per-file symlinks.
+- Automatic keyring sign-in is available through the existing terminal command;
+  an inline desktop credential prompt is not implemented.
+- Verification: 26 unit tests, Clippy with warnings denied, CLI readiness and
+  rollback fixtures, plugin symlink fixtures, and the extended isolated GUI
+  keyboard/pixel workflow passed. The native debug build passed.
+- The existing Windows VM was booted headlessly for read-only checks. All three
+  PowerShell scripts parsed without errors, the simulated physical identities
+  rejected both provisioning entry points, and the real guest reported both
+  VirtIO drivers ready. This caught and corrected a DriverStore path assumption.
+  These checks are reusable with `./ops guest:check` and never pass `-Apply` on
+  the real machine.
+- No real provisioning, driver installation, storage-bus transition, native
+  Windows boot or Linux reboot was performed. The test VM was shut down
+  afterward. The installed global `ws` still uses the legacy script.

@@ -4,6 +4,7 @@ mod cli;
 mod config;
 mod detect;
 mod display;
+mod first_boot;
 mod guest;
 mod gui;
 mod host;

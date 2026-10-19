@@ -3,6 +3,10 @@ param(
   [Parameter(Mandatory)][string]$Refresh
 )
 $ErrorActionPreference = 'Stop'
+$system = Get-CimInstance Win32_ComputerSystem
+if ($system.Manufacturer -ne 'QEMU' -or $system.Model -notmatch '^(Standard PC|KVM)') {
+  throw 'Install the Looking Glass display only inside the QEMU Windows VM'
+}
 $path = $Installer
 $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($hash -ne '1dd363a58ace6fd5e824d1a6c36744a58bbf181b739b3d75df669002cb1c68b5') {

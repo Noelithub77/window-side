@@ -1,5 +1,6 @@
 mod configuration;
 mod fixture;
+mod first_boot;
 mod model;
 mod theme;
 mod views;
@@ -31,6 +32,7 @@ struct WindowSide {
     choices: Option<setup::Choices>,
     plan: Option<setup::Plan>,
     metrics: Metrics,
+    first_boot: Option<crate::first_boot::Status>,
     setup_open: bool,
     show_files: bool,
     step: usize,
@@ -66,6 +68,7 @@ impl WindowSide {
             choices: None,
             plan: None,
             metrics: Metrics::default(),
+            first_boot: None,
             setup_open: true,
             show_files: false,
             step: 0,
@@ -90,6 +93,9 @@ impl WindowSide {
             if fixture_mode.as_deref() == Some("status") {
                 view.setup_open = false;
                 view.metrics = Metrics::fixture();
+            } else if let Some(mode) = fixture_mode.as_deref().and_then(|mode| mode.strip_prefix("first-boot-")) {
+                view.setup_open = false;
+                view.first_boot = Some(fixture::first_boot(mode));
             }
         } else {
             view.detect(cx);
@@ -182,15 +188,24 @@ impl WindowSide {
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
-        if self.fixture || self.refreshing || self.config.is_none() {
+        if self.fixture || self.refreshing || self.action.is_some() || self.config.is_none() {
             return;
         }
         self.refreshing = true;
-        let task = cx.background_spawn(async { Metrics::read() });
+        let config = self.config.clone();
+        let task = cx.background_spawn(async move {
+            let boot = config.filter(|config| config.needs_first_boot())
+                .map(|config| crate::first_boot::status(&config)).transpose();
+            (Metrics::read(), boot)
+        });
         cx.spawn(async move |this, cx| {
-            let result = task.await;
+            let (result, boot) = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.refreshing = false;
+                match boot {
+                    Ok(status) => this.first_boot = status,
+                    Err(error) => this.error = Some(format!("{error:#}")),
+                }
                 match result {
                     Ok(metrics) => {
                         this.metrics = metrics;
@@ -208,7 +223,21 @@ impl WindowSide {
     }
 
     fn run_action(&mut self, label: &'static str, action: cli::Action, cx: &mut Context<Self>) {
-        if self.action.is_some() || self.fixture {
+        if self.action.is_some() {
+            return;
+        }
+        if self.fixture {
+            if let cli::Action::Setup { step: cli::SetupStep::FirstBoot { action } } = action {
+                match action {
+                    cli::FirstBootAction::Start => self.first_boot = Some(fixture::first_boot("drivers")),
+                    cli::FirstBootAction::Finish => {
+                        self.first_boot = None;
+                        self.metrics = Metrics::fixture();
+                    },
+                    _ => {},
+                }
+                cx.notify();
+            }
             return;
         }
         self.action = Some(label);
@@ -219,7 +248,9 @@ impl WindowSide {
             let _ = this.update(cx, |this, cx| {
                 this.action = None;
                 match result {
-                    Ok(0) => {}
+                    Ok(0) => {
+                        if let Ok(config) = Config::load() { this.config = Some(config); }
+                    }
                     Ok(code) => this.error = Some(format!("{label} exited with code {code}")),
                     Err(error) => this.error = Some(format!("{error:#}")),
                 }

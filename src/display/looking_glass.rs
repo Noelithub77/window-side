@@ -55,7 +55,7 @@ pub fn grant_shared_memory() {
 }
 
 /// Downloads the pinned IDD installer and installs it in running Windows.
-pub fn install(config: &Config) -> Result<()> {
+pub fn install(config: &Config) -> Result<serde_json::Value> {
     let domain = config.vm.name.as_str();
     if !virsh::is_running(domain) {
         bail!("Start Windows before installing Looking Glass.");
@@ -82,7 +82,7 @@ pub fn install(config: &Config) -> Result<()> {
     let refresh = config.windows.refresh_hz.replace('\'', "");
     let arguments = format!("-Installer '{target}' -Refresh '{refresh}'");
     let report = powershell_ok(domain, INSTALL_SCRIPT, &arguments, Duration::from_secs(300))?;
-    println!("{}", report.trim());
+    let report = serde_json::from_str(report.trim()).context("Looking Glass returned an invalid setup report")?;
     grant_shared_memory();
-    Ok(())
+    Ok(report)
 }

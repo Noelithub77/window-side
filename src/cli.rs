@@ -6,6 +6,7 @@ use crate::host::{self, Profile};
 use crate::notify::{self, Urgency};
 use crate::process::require;
 use crate::setup;
+use crate::first_boot;
 use crate::vm::{drivers, lifecycle, virsh};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -100,6 +101,13 @@ pub enum Action {
 
 #[derive(Subcommand)]
 pub enum SetupStep {
+    /// Install guest tools, then finish the compatibility-to-VirtIO boot transition
+    FirstBoot {
+        #[command(subcommand)]
+        action: FirstBootAction,
+    },
+    /// Install or repair the bundled Omarchy plugin, preserving existing symlinks
+    Plugin,
     /// Print what was found as JSON
     Detect,
     /// Print the files and changes setup would make as JSON, without writing anything
@@ -109,6 +117,18 @@ pub enum SetupStep {
     /// Root side of apply, run through pkexec
     #[command(hide = true)]
     Root { file: PathBuf },
+}
+
+#[derive(Clone, Copy, Subcommand)]
+pub enum FirstBootAction {
+    /// Read readiness as JSON; does not boot or change Windows
+    Status,
+    /// Boot Windows, attach the driver CD and open the console
+    Start,
+    /// Provision Windows and cleanly restart it with VirtIO; closes Windows apps
+    Finish,
+    /// Restore the saved SATA configuration while Windows is stopped
+    Recover,
 }
 
 /// Unset values use the detected defaults.
@@ -152,6 +172,29 @@ impl ChoiceArgs {
 }
 
 fn run_setup(step: SetupStep) -> Result<i32> {
+    match &step {
+        SetupStep::FirstBoot { action } => {
+            let config = Config::load()?;
+            match action {
+                FirstBootAction::Status => {},
+                FirstBootAction::Start => first_boot::start(&config)?,
+                FirstBootAction::Finish => {
+                    let status = first_boot::finish(&config)?;
+                    println!("{}", serde_json::to_string(&status)?);
+                    return Ok(0);
+                },
+                FirstBootAction::Recover => first_boot::recover(&config)?,
+            }
+            println!("{}", serde_json::to_string(&first_boot::status(&Config::load()?)?)?);
+            return Ok(0);
+        },
+        SetupStep::Plugin => {
+            let result = setup::install_plugin()?;
+            println!("{}", serde_json::json!({"environment":"local", "plugin":"noel.window-side", "status":result}));
+            return Ok(0);
+        },
+        _ => {},
+    }
     if let SetupStep::Root { file } = &step {
         setup::root::apply(file)?;
         return Ok(0);
@@ -170,6 +213,7 @@ fn run_setup(step: SetupStep) -> Result<i32> {
             println!("{}", serde_json::json!({"status": "applied", "notes": plan.notes}));
         }
         SetupStep::Root { .. } => bail!("setup root runs before detection"),
+        SetupStep::FirstBoot { .. } | SetupStep::Plugin => bail!("handled before detection"),
     }
     Ok(0)
 }
@@ -264,7 +308,7 @@ pub fn run(action: Action) -> Result<i32> {
         }
         Action::RebootRoot { .. } | Action::Setup { .. } => bail!("handled before loading the config"),
         Action::LookingGlass => looking_glass::open(&config, profile)?,
-        Action::LookingGlassSetup => looking_glass::install(&config)?,
+        Action::LookingGlassSetup => println!("{}", looking_glass::install(&config)?),
         Action::Drivers => drivers::attach(domain)?,
         Action::Status => {
             let state = virsh::state(domain);

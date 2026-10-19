@@ -93,7 +93,7 @@ fn unmount_windows_disk(config: &Config) -> Result<()> {
             .collect())
     };
     for (device, target) in mounted()? {
-        println!("Unmounting {device} from {target}");
+        eprintln!("Unmounting {device} from {target}");
         text("udisksctl", &["unmount", "-b", &device])
             .with_context(|| format!("Could not unmount {target}. Close files using the Windows drive and try again."))?;
     }
@@ -179,7 +179,7 @@ fn forget_run_state() {
 
 pub fn stop(domain: &str) -> Result<()> {
     if !virsh::exists(domain) || !virsh::is_running(domain) {
-        println!("window-side is already stopped.");
+        eprintln!("window-side is already stopped.");
         notify::send(Urgency::Low, "Windows is already stopped.");
         return Ok(());
     }
