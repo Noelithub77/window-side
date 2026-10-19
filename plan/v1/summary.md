@@ -15,6 +15,8 @@ files, sign in and test Windows apps from Linux.
 | Omarchy plugin | **[chosen]** Bundled in this repo and installed by `ws` so its version always matches the binary. |
 | Repo | **[chosen]** `Noelithub77/window-side`, private until v1 works, then public. Noel's dotfiles track it as the submodule `apps/window-side`. |
 | Personal values | Never committed here. Setup detects them and writes `~/.config/window-side/config.toml`. |
+| Windows location | **[chosen]** Auto-detected. Own drive: pass the whole drive. Same drive as Linux: a virtual disk assembled at boot by a root service from a small image (GPT and a copy of the Windows boot files) plus the real Windows partition, joined with device-mapper. Linux partitions are never exposed. |
+| Colours | **[chosen]** A window-side palette by default, with an option to follow the active Omarchy theme (`colors.toml`). |
 
 ## Behaviour change
 
@@ -28,15 +30,19 @@ The window walks through these steps; `ws setup` accepts the same choices as
 flags so agents can run it without the window.
 
 1. Omarchy plugin: offered only when `omarchy` is installed.
-2. Windows disk: whole disks holding a Windows partition. Refuse any disk with
-   mounted Linux partitions or the running root. Check that Fast Startup and
-   hibernation are off before first boot.
+2. Windows: every NTFS or BitLocker system partition, with its drive. The mode
+   follows from the drive: whole drive when it holds no Linux partitions,
+   virtual disk otherwise. BitLocker is flagged because the VM's TPM differs.
+   Fast Startup and hibernation are turned off from inside Windows at first boot.
 3. GPU passthrough: GPUs whose IOMMU group holds only that GPU's functions,
    or "no passthrough".
 4. Memory and CPU split: sliders bounded by the host, defaulting to half.
 5. Review: every file to be written, then one `pkexec` prompt to apply.
-6. First boot: driver CD, guest agent, Looking Glass display (with passthrough),
-   then the optional keyring sign-in.
+6. First boot: SATA disk and e1000e network until the VirtIO drivers and guest
+   agent are installed from the driver CD (the one manual step, in the console).
+   Then ws switches to VirtIO, reads the Windows user name, disables Fast
+   Startup, installs the Looking Glass display with passthrough, and offers the
+   keyring sign-in.
 
 ## Phases
 
