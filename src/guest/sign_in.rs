@@ -4,8 +4,8 @@ use crate::process::output;
 use crate::vm::virsh;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
-use std::io::IsTerminal;
-use std::process::Command;
+use std::io::{IsTerminal, Write};
+use std::process::{Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -105,6 +105,34 @@ pub fn store_interactively(user: &str) -> Result<()> {
     if let Err(error) = virsh_script("check", &stored_credential(user)) {
         forget(user)?;
         return Err(error);
+    }
+    Ok(())
+}
+
+pub fn is_stored(user: &str) -> bool {
+    !stored_credential(user).is_empty()
+}
+
+/// Stores a credential typed into the window. It reaches secret-tool on stdin, never on argv.
+pub fn store(user: &str, credential: &str) -> Result<()> {
+    if credential.is_empty() {
+        bail!("Enter the Windows password or PIN.");
+    }
+    virsh_script("check", credential)?;
+    let mut child = Command::new("secret-tool")
+        .arg("store")
+        .arg("--label=window-side VM sign-in")
+        .args(attributes(user))
+        .stdin(Stdio::piped())
+        .spawn()
+        .context("Could not run secret-tool")?;
+    child
+        .stdin
+        .take()
+        .context("Could not open secret-tool input")?
+        .write_all(credential.as_bytes())?;
+    if !child.wait()?.success() {
+        bail!("secret-tool did not store the credential");
     }
     Ok(())
 }

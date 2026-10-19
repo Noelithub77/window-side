@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="640" viewBox="0 0 520 320">
+  <defs>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="28"/>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#262636"/>
+      <stop offset="1" stop-color="#161620"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b6f5e4"/>
+      <stop offset="1" stop-color="#6fdcc1"/>
+    </linearGradient>
+    <linearGradient id="lilac" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b8a9ff"/>
+      <stop offset="1" stop-color="#95c8ff"/>
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#glow)">
+    <circle cx="190" cy="150" r="80" fill="#b8a9ff" opacity="0.6"/>
+    <circle cx="330" cy="180" r="90" fill="#8ce9d2" opacity="0.55"/>
+    <circle cx="400" cy="90" r="50" fill="#ffb59e" opacity="0.42"/>
+  </g>
+
+  <ellipse cx="260" cy="168" rx="214" ry="118" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-dasharray="3 7"/>
+  <ellipse cx="260" cy="168" rx="170" ry="92" fill="none" stroke="#ffffff" stroke-opacity="0.05"/>
+
+  <!-- Linux window -->
+  <g filter="url(#shadow)">
+    <rect x="86" y="64" width="210" height="144" rx="20" fill="url(#glass)"/>
+    <rect x="86.5" y="64.5" width="209" height="143" rx="19.5" fill="none" stroke="url(#edge)"/>
+    <circle cx="108" cy="86" r="4" fill="#ff9ec7"/>
+    <circle cx="122" cy="86" r="4" fill="#ffd89a"/>
+    <circle cx="136" cy="86" r="4" fill="#8ce9d2"/>
+    <rect x="106" y="110" width="12" height="6" rx="3" fill="#8ce9d2"/>
+    <rect x="124" y="110" width="96" height="6" rx="3" fill="url(#lilac)" opacity="0.85"/>
+    <rect x="106" y="128" width="70" height="6" rx="3" fill="#ffffff" opacity="0.16"/>
+    <rect x="106" y="146" width="120" height="6" rx="3" fill="#ffffff" opacity="0.12"/>
+    <rect x="106" y="164" width="52" height="6" rx="3" fill="#ffffff" opacity="0.10"/>
+    <rect x="106" y="182" width="12" height="6" rx="3" fill="#8ce9d2" opacity="0.7"/>
+  </g>
+
+  <!-- Windows window -->
+  <g filter="url(#shadow)">
+    <rect x="218" y="112" width="214" height="148" rx="22" fill="url(#glass)"/>
+    <rect x="218.5" y="112.5" width="213" height="147" rx="21.5" fill="none" stroke="url(#edge)"/>
+    <rect x="232" y="126" width="186" height="120" rx="14" fill="#8ce9d2" opacity="0.06"/>
+    <rect x="291" y="152" width="32" height="32" rx="8" fill="url(#mint)"/>
+    <rect x="327" y="152" width="32" height="32" rx="8" fill="url(#mint)" opacity="0.78"/>
+    <rect x="291" y="188" width="32" height="32" rx="8" fill="url(#mint)" opacity="0.78"/>
+    <rect x="327" y="188" width="32" height="32" rx="8" fill="url(#mint)" opacity="0.55"/>
+  </g>
+
+  <!-- sparkles -->
+  <path d="M452 58 l3 9 9 3 -9 3 -3 9 -3 -9 -9 -3 9 -3z" fill="#ffd89a" opacity="0.9"/>
+  <path d="M70 232 l2 6 6 2 -6 2 -2 6 -2 -6 -6 -2 6 -2z" fill="#b8a9ff" opacity="0.9"/>
+  <path d="M470 248 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="#8ce9d2" opacity="0.8"/>
+  <circle cx="58" cy="110" r="2.5" fill="#95c8ff" opacity="0.8"/>
+  <circle cx="404" cy="290" r="2" fill="#ff9ec7" opacity="0.8"/>
+</svg>

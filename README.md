@@ -5,7 +5,8 @@ headless KVM guest while working in Linux. Agents can execute PowerShell,
 transfer files and test Windows applications without maintaining a second
 Windows install.
 
-`ws` opens a native black and teal setup/status window. Explicit commands such
+`ws` opens a native window: a short welcome, guided setup, a live overview
+with CPU, memory, GPU and network graphs, and settings. Explicit commands such
 as `ws start`, `ws exec` and `ws ssh` stay in the terminal. The app and CLI are
 one Rust binary with embedded Windows scripts; no Python runtime is required.
 Looking Glass provides the passthrough desktop, while window-side manages the
@@ -132,7 +133,7 @@ looking-glass-setup` installs the guest side. Host reboot is explicit.
 
 CLI fixtures fake libvirt and the guest agent. GUI fixtures use synthetic
 hardware in an invisible OmaBox with guest/setup actions disabled. The installed
-GUI check uses a fresh box HOME and only opens/dismisses its appearance menu.
+GUI check uses a fresh box HOME and only checks the welcome screen and quit.
 `guest:check` requires an already running QEMU guest and reads script syntax,
 VM guards and driver readiness without applying provisioning.
 

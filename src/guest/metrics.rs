@@ -54,7 +54,7 @@ fn runtime_dir() -> PathBuf {
     base.join("window-side-metrics")
 }
 
-fn byte_label(value: f64) -> String {
+pub(crate) fn byte_label(value: f64) -> String {
     let mut amount = value;
     for unit in ["B", "KiB", "MiB", "GiB"] {
         if amount < 1024.0 {

@@ -30,21 +30,23 @@ shot() {
   rg -qi "$2" "$output/$1.txt" || { cat "$output/$1.txt" >&2; return 1; }
 }
 key() { omabox keys -b "$box" --window class:window-side "$@"; }
+click() { omabox click -b "$box" --window class:window-side "$@" >/dev/null; }
 start setup
+shot welcome 'right beside Linux'
+key alt+Right
 shot windows 'Choose Windows'
 key alt+Right
 shot graphics 'Passthrough reserves'
-omabox click -b "$box" --window class:window-side 29 232 >/dev/null
+click 700 170
 key alt+Right
 shot resources 'Leave room for Linux'
-omabox click -b "$box" --window class:window-side 350 285 >/dev/null
-key Tab Tab space
-key Tab space space
-shot resources-edited 'Windows memory'
+# Memory minus, six times: 16 GiB becomes 10 GiB.
+for _ in 1 2 3 4 5 6; do click 1091 175; done
+shot resources-edited '10[[:space:]]*GiB'
 key alt+Right
 shot review 'Review setup'
 rg -qi 'Virtual display' "$output/review.txt"
-rg -qi 'Memory[[:space:]]+10' "$output/review.txt"
+rg -qi '10[[:space:]]*GiB' "$output/review.txt"
 key alt+Left
 shot back-resources 'Leave room for Linux'
 key alt+Right
@@ -53,25 +55,25 @@ key ctrl+q
 omabox wait -b "$box" --timeout 10s window class:window-side --gone >/dev/null
 start status
 shot status '7[.]4[[:space:]]*GiB'
-key Tab space
-shot appearance-menu 'Teal'
-key Escape
-shot appearance-dismissed '7[.]4[[:space:]]*GiB'
-# Read the window surface itself, outside text/controls; proves teal's near-black base.
-magick "$output/status.png" -format '%[pixel:p{30,760}]' info: > "$output/background.txt"
-rg -q '0,0,0|#000000' "$output/background.txt"
+# Below the last card the window shows its own ink surface (#0c0c12).
+magick "$output/status.png" -format '%[pixel:p{10,850}]' info: > "$output/background.txt"
+rg -q '12,12,18' "$output/background.txt"
+click 1204 16
+shot settings 'Windows VM'
+click 1131 16
+shot overview-again '7[.]4[[:space:]]*GiB'
 key ctrl+q
 omabox wait -b "$box" --timeout 10s window class:window-side --gone >/dev/null
 start first-boot-start
 shot first-boot-start 'Not started'
-key Tab Tab space
+key Tab space
 shot first-boot-drivers 'Drivers needed'
 key ctrl+q
 omabox wait -b "$box" --timeout 10s window class:window-side --gone >/dev/null
 start first-boot-ready
-shot first-boot-ready 'Ready to finish'
-key Tab Tab space
+shot first-boot-ready 'Restarting closes'
+key Tab space
 shot first-boot-complete '7[.]4[[:space:]]*GiB'
 jq -n --arg artifacts "$output" '{environment:"isolated-omabox", success:true,
-  checked:["setup steps by keyboard","back navigation","radio selection","slider and keyboard resource changes in review","review before apply","Windows status pixels","keyboard appearance menu and dismissal","black teal surface","first boot keyboard start and driver instructions","first boot restart returns to status"],
+  checked:["welcome then setup steps by keyboard","back navigation","card selection","memory stepper change in review","review before apply","Windows status pixels","ink surface","overview and settings navigation","first boot keyboard start and driver instructions","first boot restart returns to status"],
   hostSetupApplied:false, guestActionsRun:false, artifacts:$artifacts}' | tee "$output/result.json"

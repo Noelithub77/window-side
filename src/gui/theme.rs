@@ -1,7 +1,7 @@
 use crate::config::{config_dir, home};
 use anyhow::{Context, Result};
 use gpui_kit::component::{Theme, ThemeMode};
-use gpui_kit::{App, Hsla, rgb};
+use gpui_kit::{App, Hsla, px, rgb};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -44,26 +44,29 @@ impl Appearance {
         };
         Theme::change(ThemeMode::Dark, None, cx);
         Theme::update(cx, |theme| {
+            theme.radius = px(12.);
+            theme.radius_lg = px(22.);
             let c = &mut theme.colors;
             c.background = palette.background;
             c.foreground = palette.foreground;
             c.group_box = palette.surface;
             c.group_box_foreground = palette.foreground;
-            c.popover = palette.surface;
+            c.popover = palette.raised;
             c.popover_foreground = palette.foreground;
             c.sidebar = palette.surface;
             c.sidebar_foreground = palette.foreground;
+            c.sidebar_border = palette.border;
             c.title_bar = palette.background;
             c.title_bar_border = palette.border;
-            c.muted = palette.surface;
+            c.muted = palette.raised;
             c.muted_foreground = palette.muted;
             c.border = palette.border;
             c.input = palette.border;
             c.ring = palette.accent;
             c.caret = palette.accent;
-            c.accent = palette.selected;
+            c.accent = palette.raised;
             c.accent_foreground = palette.foreground;
-            c.selection = palette.selected;
+            c.selection = palette.accent.opacity(0.3);
             c.primary = palette.accent;
             c.primary_foreground = palette.background;
             c.primary_hover = palette.hover;
@@ -72,16 +75,16 @@ impl Appearance {
             c.button_primary_foreground = palette.background;
             c.button_primary_hover = palette.hover;
             c.button_primary_active = palette.active;
-            c.button = palette.surface;
+            c.button = palette.raised;
             c.button_foreground = palette.foreground;
-            c.button_hover = palette.selected;
-            c.button_active = palette.border;
-            c.secondary = palette.selected;
+            c.button_hover = palette.border;
+            c.button_active = palette.raised;
+            c.secondary = palette.raised;
             c.secondary_foreground = palette.foreground;
             c.secondary_hover = palette.border;
-            c.secondary_active = palette.selected;
+            c.secondary_active = palette.raised;
             c.list = palette.background;
-            c.list_active = palette.selected;
+            c.list_active = palette.raised;
             c.list_active_border = palette.accent;
             c.list_hover = palette.surface;
             c.tab_bar = palette.background;
@@ -89,39 +92,65 @@ impl Appearance {
             c.tab_active_foreground = palette.foreground;
             c.tab_foreground = palette.muted;
             c.slider_bar = palette.accent;
-            c.slider_thumb = palette.hover;
+            c.slider_thumb = palette.foreground;
+            c.switch = palette.border;
             c.progress_bar = palette.accent;
+            c.skeleton = palette.raised;
             c.success = palette.accent;
             c.success_foreground = palette.background;
+            c.warning = palette.warning;
+            c.warning_foreground = palette.background;
+            c.danger = palette.danger;
+            c.danger_foreground = palette.background;
+            c.info = palette.linux;
+            c.info_foreground = palette.background;
+            c.chart_1 = palette.accent;
+            c.chart_2 = palette.linux;
+            c.chart_3 = palette.pink;
+            c.chart_4 = palette.sky;
+            c.chart_5 = palette.warning;
+            c.chart_grid = palette.border;
         });
         Ok(())
     }
 }
 
+/// Windows uses the accent; Linux's share of the machine uses `info` (chart 2).
+/// Charts: cpu 1, memory 2, gpu 3, network down 4 and up 5.
 struct Palette {
     background: Hsla,
     surface: Hsla,
-    selected: Hsla,
+    raised: Hsla,
     border: Hsla,
     foreground: Hsla,
     muted: Hsla,
     accent: Hsla,
     hover: Hsla,
     active: Hsla,
+    linux: Hsla,
+    pink: Hsla,
+    sky: Hsla,
+    warning: Hsla,
+    danger: Hsla,
 }
 
 impl Palette {
     fn teal() -> Self {
         Self {
-            background: rgb(0x000000).into(),
-            surface: rgb(0x081c15).into(),
-            selected: rgb(0x1b4332).into(),
-            border: rgb(0x2d6a4f).into(),
-            foreground: rgb(0xd8f3dc).into(),
-            muted: rgb(0x95d5b2).into(),
-            accent: rgb(0x74c69d).into(),
-            hover: rgb(0xb7e4c7).into(),
-            active: rgb(0x52b788).into(),
+            background: rgb(0x0c0c12).into(),
+            surface: rgb(0x14141c).into(),
+            raised: rgb(0x1e1e2a).into(),
+            border: rgb(0x2a2a38).into(),
+            foreground: rgb(0xecebf5).into(),
+            muted: rgb(0x9c9bb0).into(),
+            accent: rgb(0x8ce9d2).into(),
+            hover: rgb(0xb0f2e2).into(),
+            active: rgb(0x6fdcc1).into(),
+            linux: rgb(0xb8a9ff).into(),
+            pink: rgb(0xff9ec7).into(),
+            sky: rgb(0x95c8ff).into(),
+            warning: rgb(0xffc78f).into(),
+            danger: rgb(0xff8f8f).into(),
         }
     }
 
@@ -140,18 +169,22 @@ impl Palette {
             Ok(rgb(u32::from_str_radix(hex, 16)?).into())
         };
         let background = color("background")?;
-        let foreground = color("foreground")?;
         let accent = color("accent")?;
         Ok(Self {
             background,
-            foreground,
+            foreground: color("foreground")?,
             accent,
             surface: color("color0")?,
-            selected: color("color8")?,
+            raised: background.blend(color("color8")?.opacity(0.35)),
             border: color("color8")?,
             muted: color("color7")?,
             hover: color("color6")?,
             active: accent,
+            linux: color("color5")?,
+            pink: color("color1")?,
+            sky: color("color4")?,
+            warning: color("color3")?,
+            danger: color("color1")?,
         })
     }
 }
@@ -178,9 +211,9 @@ mod tests {
     }
 
     #[test]
-    fn teal_text_and_actions_remain_readable_on_black_and_green() {
+    fn teal_text_and_actions_remain_readable_on_every_surface() {
         let palette = Palette::teal();
-        for background in [palette.background, palette.surface, palette.selected] {
+        for background in [palette.background, palette.surface, palette.raised] {
             assert!(contrast(palette.foreground, background) >= 4.5);
             assert!(contrast(palette.muted, background) >= 4.5);
         }
@@ -188,5 +221,8 @@ mod tests {
             assert!(contrast(palette.background, fill) >= 4.5);
         }
         assert!(contrast(palette.accent, palette.background) >= 3.);
+        for chart in [palette.linux, palette.pink, palette.sky, palette.warning] {
+            assert!(contrast(chart, palette.surface) >= 3.);
+        }
     }
 }

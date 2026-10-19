@@ -89,3 +89,16 @@ pub(super) fn first_boot(mode: &str) -> crate::first_boot::Status {
         network_ready: Some(matches!(stage, Stage::Ready | Stage::SignIn)),
     }
 }
+
+
+/// The configured machine behind the status fixtures: GPU passthrough on a dedicated drive.
+pub(super) fn config() -> Config {
+    Config {
+        vm: Vm { name: "window-side".into(), memory_mib: 16384, vcpus: 10, virtio: true },
+        disk: Disk { mode: DiskMode::Whole, id: "fixture-drive".into(), windows_partition_uuid: "fixture-windows".into() },
+        gpu: Some(Gpu { address: "0000:01:00.0".into(), audio_address: Some("0000:01:00.1".into()), ids: vec!["10de:28a0".into()] }),
+        windows: Windows { provisioned: true, user: "fixture".into(), refresh_hz: "165".into() },
+        boot: Boot::default(),
+        hooks: Hooks::default(),
+    }
+}

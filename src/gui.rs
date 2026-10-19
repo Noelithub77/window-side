@@ -1,18 +1,27 @@
+mod actions;
+mod assets;
 mod configuration;
-mod fixture;
 mod first_boot;
+mod fixture;
 mod model;
+mod overview;
+mod review;
+mod settings;
+mod steps;
 mod theme;
 mod views;
+mod welcome;
+mod widgets;
 mod wizard;
 
-use crate::{cli, config::Config, setup};
+use crate::{config::Config, setup};
 use gpui_kit::component::{
     ActiveTheme, Theme, TitleBar,
+    input::InputState,
     slider::{SliderEvent, SliderState},
 };
 use gpui_kit::*;
-use model::{Detection, Metrics};
+use model::{Detection, History, Metrics};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -26,13 +35,34 @@ enum Resource {
     Cpus,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Page {
+    Overview,
+    Settings,
+}
+
+/// Destructive actions wait for a second click within a few seconds.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Armed {
+    ForceStop,
+    BootNormal,
+    BootGpu,
+}
+
 struct WindowSide {
     config: Option<Config>,
     inventory: Option<setup::Inventory>,
     choices: Option<setup::Choices>,
     plan: Option<setup::Plan>,
     metrics: Metrics,
+    history: History,
+    samples: usize,
     first_boot: Option<crate::first_boot::Status>,
+    page: Page,
+    welcome: bool,
+    armed: Option<Armed>,
+    credential: Option<bool>,
+    password: Entity<InputState>,
     setup_open: bool,
     show_files: bool,
     step: usize,
@@ -68,7 +98,14 @@ impl WindowSide {
             choices: None,
             plan: None,
             metrics: Metrics::default(),
+            history: History::default(),
+            samples: 0,
             first_boot: None,
+            page: Page::Overview,
+            welcome: false,
+            armed: None,
+            credential: None,
+            password: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder("Windows password or PIN")),
             setup_open: true,
             show_files: false,
             step: 0,
@@ -90,11 +127,19 @@ impl WindowSide {
         view.focus.focus(window, cx);
         if fixture {
             view.accept_detection(fixture::detection(), cx);
-            if fixture_mode.as_deref() == Some("status") {
+            if let Some(page) = fixture_mode.as_deref().and_then(|mode| mode.strip_prefix("status")) {
                 view.setup_open = false;
-                view.metrics = Metrics::fixture();
+                view.welcome = false;
+                view.accept_metrics(Metrics::fixture());
+                view.history = History::fixture();
+                view.config = Some(fixture::config());
+                view.credential = Some(false);
+                if page == "-settings" {
+                    view.page = Page::Settings;
+                }
             } else if let Some(mode) = fixture_mode.as_deref().and_then(|mode| mode.strip_prefix("first-boot-")) {
                 view.setup_open = false;
+                view.welcome = false;
                 view.first_boot = Some(fixture::first_boot(mode));
             }
         } else {
@@ -124,6 +169,7 @@ impl WindowSide {
         self.config = detection.config;
         if !self.initialized {
             self.setup_open = self.config.is_none();
+            self.welcome = self.setup_open;
         }
         self.initialized = true;
         self.choices = detection.inventory.default_choices(self.config.as_ref());
@@ -157,6 +203,7 @@ impl WindowSide {
                 .collect();
         }
         self.inventory = Some(detection.inventory);
+        self.check_credential(cx);
         if !self.setup_open {
             self.refresh(cx);
         }
@@ -208,11 +255,11 @@ impl WindowSide {
                 }
                 match result {
                     Ok(metrics) => {
-                        this.metrics = metrics;
+                        this.accept_metrics(metrics);
                         this.metrics_error = None;
                     }
                     Err(error) => {
-                        this.metrics = Metrics::default();
+                        this.accept_metrics(Metrics::default());
                         this.metrics_error = Some(format!("{error:#}"));
                     }
                 }
@@ -222,64 +269,18 @@ impl WindowSide {
         .detach();
     }
 
-    fn run_action(&mut self, label: &'static str, action: cli::Action, cx: &mut Context<Self>) {
-        if self.action.is_some() {
-            return;
-        }
-        if self.fixture {
-            if let cli::Action::Setup { step: cli::SetupStep::FirstBoot { action } } = action {
-                match action {
-                    cli::FirstBootAction::Start => self.first_boot = Some(fixture::first_boot("drivers")),
-                    cli::FirstBootAction::Finish => {
-                        self.first_boot = None;
-                        self.metrics = Metrics::fixture();
-                    },
-                    _ => {},
-                }
-                cx.notify();
-            }
-            return;
-        }
-        self.action = Some(label);
-        self.error = None;
-        let task = cx.background_spawn(async move { cli::run(action) });
-        cx.spawn(async move |this, cx| {
-            let result = task.await;
-            let _ = this.update(cx, |this, cx| {
-                this.action = None;
-                match result {
-                    Ok(0) => {
-                        if let Ok(config) = Config::load() { this.config = Some(config); }
-                    }
-                    Ok(code) => this.error = Some(format!("{label} exited with code {code}")),
-                    Err(error) => this.error = Some(format!("{error:#}")),
-                }
-                this.refresh(cx);
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-
-    fn set_appearance(&mut self, appearance: Appearance, cx: &mut Context<Self>) {
-        match appearance.apply(cx).and_then(|()| {
-            if self.fixture {
-                Ok(())
-            } else {
-                appearance.save()
-            }
-        }) {
-            Ok(()) => {
-                self.appearance = appearance;
-                self.error = None;
-            }
-            Err(error) => self.error = Some(format!("{error:#}")),
-        }
-        cx.notify();
+    fn accept_metrics(&mut self, metrics: Metrics) {
+        self.history.record(&metrics);
+        self.samples += 1;
+        self.metrics = metrics;
     }
 
     fn next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.welcome {
+            self.welcome = false;
+            cx.notify();
+            return;
+        }
         if !self.setup_open
             || self.detecting
             || self.planning
@@ -305,6 +306,9 @@ impl WindowSide {
             return;
         }
         self.focus.focus(window, cx);
+        if self.step == 0 && self.config.is_none() {
+            self.welcome = true;
+        }
         self.step = self.step.saturating_sub(1);
         self.plan = None;
         self.error = None;
@@ -327,18 +331,14 @@ impl Render for WindowSide {
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .child(self.header(cx))
-            .child(if self.setup_open {
-                self.setup_view(cx)
-            } else {
-                self.status_view(cx)
-            })
+            .child(self.page_view(cx))
     }
 }
 
 pub fn run() -> bool {
     let failed = Arc::new(AtomicBool::new(false));
     let window_failed = failed.clone();
-    application().with_assets(assets::Assets).run(move |cx| {
+    application().with_assets(assets::AppAssets).run(move |cx| {
         gpui_kit::init(cx);
         let mut appearance = Appearance::load();
         if let Err(error) = appearance.apply(cx) {
@@ -357,10 +357,10 @@ pub fn run() -> bool {
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
-                size(px(880.), px(620.)),
+                size(px(920.), px(680.)),
                 cx,
             ))),
-            window_min_size: Some(size(px(640.), px(500.))),
+            window_min_size: Some(size(px(720.), px(540.))),
             app_id: Some("window-side".into()),
             titlebar: Some(TitlebarOptions {
                 title: Some("window-side".into()),

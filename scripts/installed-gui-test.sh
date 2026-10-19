@@ -30,12 +30,8 @@ omabox wait -b "$box" --timeout 15s still --window class:window-side --quiet 600
 omabox shot -b "$box" --window class:window-side -o "$output/window.png" >/dev/null
 tesseract "$output/window.png" stdout 2>/dev/null > "$output/window.txt"
 rg -qi 'window.side' "$output/window.txt"
-omabox keys -b "$box" --window class:window-side Tab space
-omabox shot -b "$box" --window class:window-side -o "$output/menu.png" >/dev/null
-tesseract "$output/menu.png" stdout 2>/dev/null > "$output/menu.txt"
-rg -qi 'Teal' "$output/menu.txt"
-omabox keys -b "$box" --window class:window-side Escape ctrl+q
-omabox wait -b "$box" --timeout 10s window class:window-side --gone >/dev/null
+rg -qi 'right beside Linux' "$output/window.txt"
+omabox keys -b "$box" --window class:window-side ctrl+q
 jq -n --arg binary "$binary" '{environment:"isolated-omabox", binary:$binary,
-  success:true, checked:["installed release window","keyboard appearance menu","dismissal and quit"],
+  success:true, checked:["installed release window","welcome screen","keyboard quit"],
   setupApplied:false, guestActionsRun:false}' | tee "$output/result.json"
