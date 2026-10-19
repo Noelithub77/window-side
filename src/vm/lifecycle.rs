@@ -1,4 +1,4 @@
-use crate::config::{Config, config_dir, state_dir};
+use crate::config::{Config, DiskMode, config_dir, state_dir};
 use crate::guest::agent::ping;
 use crate::host::{self, Profile};
 use crate::notify::{self, Urgency};
@@ -23,11 +23,15 @@ fn verify_host(config: &Config, profile: Profile) -> Result<()> {
         bail!("KVM is unavailable to the current user.");
     }
     let disk = config.disk_link();
-    let resolved = fs::canonicalize(&disk).with_context(|| format!("The configured Windows disk {} was not found.", config.disk.id))?;
+    let resolved = fs::canonicalize(&disk).with_context(|| match config.disk.mode {
+        DiskMode::Whole => format!("The configured Windows disk {} was not found.", config.disk.id),
+        DiskMode::Partition => "The Windows virtual disk is not assembled. Check window-side-disk.service.".to_owned(),
+    })?;
     if !resolved.starts_with("/dev/") {
         bail!("The Windows disk resolved to an unexpected device: {}", resolved.display());
     }
-    if !windows_partition_matches(&resolved, &config.disk.windows_partition_uuid)? {
+    let host = fs::canonicalize(config.host_device()).context("The Windows partition was not found.")?;
+    if !windows_partition_matches(&host, &config.disk.windows_partition_uuid)? {
         bail!("The Windows partition identity does not match the configured disk.");
     }
     if let Some(gpu) = &config.gpu {
@@ -42,7 +46,7 @@ fn verify_host(config: &Config, profile: Profile) -> Result<()> {
     Ok(())
 }
 
-/// Checks the configured Windows partition still lives on the configured disk.
+/// Checks the configured Windows partition is on the configured device.
 fn windows_partition_matches(disk: &Path, uuid: &str) -> Result<bool> {
     let disk = disk.display().to_string();
     let uuids = text("lsblk", &["-nrpo", "UUID", &disk])?;
@@ -74,9 +78,9 @@ pub fn setup_domain(config: &Config, profile: Profile) -> Result<()> {
     Ok(())
 }
 
-/// Linux must not hold any Windows partition open while the VM writes to the disk.
+/// Linux must not hold any Windows partition open while the VM writes to it.
 fn unmount_windows_disk(config: &Config) -> Result<()> {
-    let disk = fs::canonicalize(config.disk_link())?.display().to_string();
+    let disk = fs::canonicalize(config.host_device())?.display().to_string();
     let mounted = || -> Result<Vec<(String, String)>> {
         let devices = text("lsblk", &["-nrpo", "NAME", &disk])?;
         Ok(devices
@@ -101,17 +105,20 @@ fn unmount_windows_disk(config: &Config) -> Result<()> {
 
 fn attach_gpu(config: &Config) -> Result<()> {
     let Some(gpu) = &config.gpu else { return Ok(()) };
-    let runtime = state_dir();
-    let graphics = runtime.join("gpu-hostdev.xml");
-    let audio = runtime.join("gpu-audio-hostdev.xml");
-    fs::write(&graphics, host::hostdev_xml(&gpu.address)?)?;
-    fs::write(&audio, host::hostdev_xml(&gpu.audio_address)?)?;
-    let (graphics, audio) = (graphics.display().to_string(), audio.display().to_string());
     let domain = config.vm.name.as_str();
-    virsh::run(&["attach-device", domain, &graphics, "--config"]).context("Could not prepare the GPU passthrough devices.")?;
-    if virsh::run(&["attach-device", domain, &audio, "--config"]).is_err() {
-        let _ = virsh::run(&["detach-device", domain, &graphics, "--config"]);
-        bail!("Could not prepare the GPU audio function. Linux kept ownership.");
+    let functions = std::iter::once(&gpu.address).chain(gpu.audio_address.as_ref());
+    let mut attached: Vec<String> = Vec::new();
+    for (index, address) in functions.enumerate() {
+        let file = state_dir().join(format!("gpu-hostdev-{index}.xml"));
+        fs::write(&file, host::hostdev_xml(address)?)?;
+        let file = file.display().to_string();
+        if virsh::run(&["attach-device", domain, &file, "--config"]).is_err() {
+            for done in &attached {
+                let _ = virsh::run(&["detach-device", domain, done, "--config"]);
+            }
+            bail!("Could not prepare GPU function {address} for passthrough. Linux kept ownership.");
+        }
+        attached.push(file);
     }
     Ok(())
 }

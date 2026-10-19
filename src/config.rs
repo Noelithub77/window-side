@@ -24,12 +24,33 @@ pub struct Vm {
     pub name: String,
     pub memory_mib: u32,
     pub vcpus: u32,
+    /// Windows has the VirtIO drivers, so the disk and network use VirtIO instead of SATA and e1000e.
+    #[serde(default = "enabled")]
+    pub virtio: bool,
 }
+
+fn enabled() -> bool {
+    true
+}
+
+/// How Windows reaches the VM: its own drive, or only its partition on a drive shared with Linux.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DiskMode {
+    #[default]
+    Whole,
+    Partition,
+}
+
+/// device-mapper name of the virtual disk assembled in partition mode.
+pub const VIRTUAL_DISK: &str = "window-side";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Disk {
-    /// Name under /dev/disk/by-id for the whole Windows disk.
+    #[serde(default)]
+    pub mode: DiskMode,
+    /// Whole mode: /dev/disk/by-id name of the drive. Partition mode: GPT GUID of the Windows partition.
     pub id: String,
     /// Filesystem UUID of the Windows system partition, checked before every start.
     pub windows_partition_uuid: String,
@@ -39,7 +60,8 @@ pub struct Disk {
 #[serde(deny_unknown_fields)]
 pub struct Gpu {
     pub address: String,
-    pub audio_address: String,
+    /// Some laptops hide the GPU's HDMI audio function.
+    pub audio_address: Option<String>,
     /// vendor:device IDs claimed by vfio-pci in the GPU boot profile.
     pub ids: Vec<String>,
 }
@@ -88,8 +110,20 @@ impl Config {
         toml::from_str(&text).with_context(|| format!("{} is invalid", path.display()))
     }
 
+    /// The block device libvirt gives to Windows.
     pub fn disk_link(&self) -> PathBuf {
-        PathBuf::from("/dev/disk/by-id").join(&self.disk.id)
+        match self.disk.mode {
+            DiskMode::Whole => PathBuf::from("/dev/disk/by-id").join(&self.disk.id),
+            DiskMode::Partition => PathBuf::from("/dev/mapper").join(VIRTUAL_DISK),
+        }
+    }
+
+    /// Host devices Linux must not have mounted while Windows runs.
+    pub fn host_device(&self) -> PathBuf {
+        match self.disk.mode {
+            DiskMode::Whole => self.disk_link(),
+            DiskMode::Partition => PathBuf::from("/dev/disk/by-partuuid").join(&self.disk.id),
+        }
     }
 }
 

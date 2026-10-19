@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "noel.window-side",
+  "name": "window-side",
+  "version": "1.0.0",
+  "author": "Noel",
+  "license": "MIT",
+  "description": "Status, usage, boot-profile reboot controls, and Looking Glass for the physical Windows VM.",
+  "kinds": ["service", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "window-side",
+    "description": "Windows VM status, usage, console, reboot profiles, and Looking Glass.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "left"
+  }
+}

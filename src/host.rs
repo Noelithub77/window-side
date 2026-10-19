@@ -59,8 +59,10 @@ pub fn verify_gpu_topology(gpu: &Gpu) -> Result<()> {
     let group = pci_device(&gpu.address).join("iommu_group/devices");
     let Ok(entries) = fs::read_dir(&group) else { bail!("The GPU does not have an available IOMMU group.") };
     let members: BTreeSet<String> = entries.flatten().map(|entry| entry.file_name().to_string_lossy().into_owned()).collect();
-    let expected: BTreeSet<String> = [gpu.address.clone(), gpu.audio_address.clone()].into();
-    if members != expected {
+    let functions: BTreeSet<String> = std::iter::once(gpu.address.clone()).chain(gpu.audio_address.clone()).collect();
+    // PCIe bridges may share the group; vfio leaves them to the host.
+    let is_bridge = |member: &String| fs::read_to_string(pci_device(member).join("class")).is_ok_and(|class| class.starts_with("0x0604"));
+    if !functions.is_subset(&members) || members.iter().any(|member| !functions.contains(member) && !is_bridge(member)) {
         bail!("The GPU IOMMU group is not isolated to its graphics and audio functions.");
     }
     if !pci_device(&gpu.address).join("reset").exists() {
@@ -70,7 +72,8 @@ pub fn verify_gpu_topology(gpu: &Gpu) -> Result<()> {
 }
 
 pub fn verify_gpu_claimed(gpu: &Gpu) -> Result<()> {
-    for (address, function) in [(&gpu.address, "graphics"), (&gpu.audio_address, "audio")] {
+    let functions = [(Some(&gpu.address), "graphics"), (gpu.audio_address.as_ref(), "audio")];
+    for (address, function) in functions.into_iter().filter_map(|(address, function)| Some((address?, function))) {
         if pci_driver(address).as_deref() != Some("vfio-pci") {
             bail!("The GPU boot profile is active, but the GPU {function} function is not bound to vfio-pci.");
         }
@@ -136,7 +139,7 @@ mod tests {
     fn rtx() -> Gpu {
         Gpu {
             address: "0000:01:00.0".into(),
-            audio_address: "0000:01:00.1".into(),
+            audio_address: Some("0000:01:00.1".into()),
             ids: vec!["10de:28a0".into(), "10de:22be".into()],
         }
     }

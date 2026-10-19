@@ -2,11 +2,13 @@
 
 mod cli;
 mod config;
+mod detect;
 mod display;
 mod guest;
 mod host;
 mod notify;
 mod process;
+mod setup;
 mod vm;
 
 use clap::{CommandFactory, Parser};

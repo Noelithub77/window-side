@@ -5,6 +5,7 @@ use crate::guest::{metrics, sign_in, ssh};
 use crate::host::{self, Profile};
 use crate::notify::{self, Urgency};
 use crate::process::require;
+use crate::setup;
 use crate::vm::{drivers, lifecycle, virsh};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -23,8 +24,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Action {
-    /// Validate the host and define the libvirt domain
-    Setup,
+    /// Detect Windows, GPUs and CPUs, then configure the VM and boot profiles
+    Setup {
+        #[command(subcommand)]
+        step: SetupStep,
+    },
+    /// Validate the host and define the libvirt domain from its current file
+    Define,
     /// Start Windows headlessly, wait for its guest agent and sign in
     Start,
     /// Start Windows if needed and show it (Looking Glass in the GPU profile)
@@ -92,6 +98,82 @@ pub enum Action {
     },
 }
 
+#[derive(Subcommand)]
+pub enum SetupStep {
+    /// Print what was found as JSON
+    Detect,
+    /// Print the files and changes setup would make as JSON, without writing anything
+    Plan(ChoiceArgs),
+    /// Apply the plan; asks for the admin password once
+    Apply(ChoiceArgs),
+    /// Root side of apply, run through pkexec
+    #[command(hide = true)]
+    Root { file: PathBuf },
+}
+
+/// Unset values use the detected defaults.
+#[derive(clap::Args)]
+pub struct ChoiceArgs {
+    /// Windows partition, e.g. /dev/nvme0n1p3
+    #[arg(long)]
+    windows: Option<String>,
+    /// GPU PCI address to pass through, or `none`
+    #[arg(long)]
+    gpu: Option<String>,
+    #[arg(long)]
+    memory_gib: Option<u32>,
+    #[arg(long)]
+    vcpus: Option<u32>,
+    /// Install the Omarchy panel plugin
+    #[arg(long)]
+    plugin: Option<bool>,
+}
+
+impl ChoiceArgs {
+    fn resolve(self, inventory: &setup::Inventory, existing: Option<&Config>) -> Result<setup::Choices> {
+        let mut choices = inventory.default_choices(existing).context("No Windows install was found")?;
+        if let Some(windows) = self.windows {
+            choices.windows = windows;
+        }
+        if let Some(gpu) = self.gpu {
+            choices.gpu = (gpu != "none").then_some(gpu);
+        }
+        if let Some(gib) = self.memory_gib {
+            choices.memory_mib = gib.saturating_mul(1024);
+        }
+        if let Some(vcpus) = self.vcpus {
+            choices.vcpus = vcpus;
+        }
+        if let Some(plugin) = self.plugin {
+            choices.plugin = plugin;
+        }
+        Ok(choices)
+    }
+}
+
+fn run_setup(step: SetupStep) -> Result<i32> {
+    if let SetupStep::Root { file } = &step {
+        setup::root::apply(file)?;
+        return Ok(0);
+    }
+    let inventory = setup::detect()?;
+    let existing = Config::load().ok();
+    match step {
+        SetupStep::Detect => println!("{}", serde_json::to_string_pretty(&inventory)?),
+        SetupStep::Plan(args) => {
+            let plan = setup::plan(&inventory, &args.resolve(&inventory, existing.as_ref())?, existing.as_ref())?;
+            println!("{}", serde_json::to_string_pretty(&plan)?);
+        }
+        SetupStep::Apply(args) => {
+            let plan = setup::plan(&inventory, &args.resolve(&inventory, existing.as_ref())?, existing.as_ref())?;
+            setup::apply(&plan)?;
+            println!("{}", serde_json::json!({"status": "applied", "notes": plan.notes}));
+        }
+        SetupStep::Root { .. } => bail!("setup root runs before detection"),
+    }
+    Ok(0)
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 pub enum BootChoice {
     Normal,
@@ -110,7 +192,7 @@ impl Action {
     pub fn notifies(&self) -> bool {
         matches!(
             self,
-            Action::Setup | Action::Start | Action::Launch | Action::Console | Action::Stop | Action::ForceStop
+            Action::Setup { .. } | Action::Define | Action::Start | Action::Launch | Action::Console | Action::Stop | Action::ForceStop
                 | Action::Reboot { .. } | Action::LookingGlass | Action::LookingGlassSetup | Action::Drivers
         )
     }
@@ -133,16 +215,20 @@ fn show(config: &Config, profile: Profile) -> Result<()> {
 }
 
 pub fn run(action: Action) -> Result<i32> {
-    // pkexec runs this as root, where the user's config is out of reach.
-    if let Action::RebootRoot { entry } = &action {
-        host::reboot_into(entry)?;
-        return Ok(0);
+    // pkexec runs these as root, where the user's config is out of reach.
+    match action {
+        Action::RebootRoot { entry } => {
+            host::reboot_into(&entry)?;
+            return Ok(0);
+        }
+        Action::Setup { step } => return run_setup(step),
+        _ => {}
     }
     let config = Config::load()?;
     let profile = host::boot_profile(config.gpu.as_ref());
     let domain = config.vm.name.as_str();
     match action {
-        Action::Setup => lifecycle::setup_domain(&config, profile)?,
+        Action::Define => lifecycle::setup_domain(&config, profile)?,
         Action::Start => {
             lifecycle::start(&config, profile)?;
             lifecycle::wait_for_agent(domain)?;
@@ -176,7 +262,7 @@ pub fn run(action: Action) -> Result<i32> {
             let program = std::env::current_exe().context("Could not find the ws binary")?;
             return Err(Command::new("pkexec").arg(program).args(["reboot-root", entry]).exec()).context("Could not run pkexec");
         }
-        Action::RebootRoot { .. } => bail!("reboot-root is handled before loading the config"),
+        Action::RebootRoot { .. } | Action::Setup { .. } => bail!("handled before loading the config"),
         Action::LookingGlass => looking_glass::open(&config, profile)?,
         Action::LookingGlassSetup => looking_glass::install(&config)?,
         Action::Drivers => drivers::attach(domain)?,

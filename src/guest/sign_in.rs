@@ -1,6 +1,6 @@
 //! Signs in to Windows by typing a Linux keyring credential on the VM's virtual keyboard.
 use crate::guest::agent::signed_in_user;
-use crate::process::{output, text_with_input};
+use crate::process::output;
 use crate::vm::virsh;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
@@ -85,14 +85,6 @@ pub fn run(domain: &str, user: &str, wait: Duration) -> Result<Value> {
         }
     }
     Ok(json!({"status": "not-signed-in", "typed": true}))
-}
-
-/// Stores a credential given by the setup window; secret-tool reads it from stdin.
-pub fn store(user: &str, credential: &str) -> Result<()> {
-    virsh_script("check", credential)?;
-    let mut args = vec!["store", "--label=window-side VM sign-in"];
-    args.extend(attributes(user));
-    text_with_input("secret-tool", &args, credential).map(drop)
 }
 
 /// Lets secret-tool prompt in the terminal so the credential never passes through ws.
