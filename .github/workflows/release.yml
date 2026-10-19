@@ -1,0 +1,33 @@
+name: Draft release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    permissions:
+      contents: write
+    steps:
+      - name: Install build and release tools
+        run: pacman -Syu --noconfirm --needed git rust clang cmake pkgconf libxcb libxkbcommon libxkbcommon-x11 fontconfig wayland vulkan-headers vulkan-icd-loader jq ripgrep desktop-file-utils github-cli
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check and build
+        run: ./ops check:release
+      - name: Validate tag and package the exact source
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          test "$TAG" = "v$(target/release/ws --version | cut -d ' ' -f 2)"
+          ./ops release:package --output "$RUNNER_TEMP/window-side-release"
+      - name: Create a draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$TAG" "$RUNNER_TEMP/window-side-release/"* --verify-tag --draft --prerelease --title "window-side $TAG" --notes-file packaging/release-notes.md

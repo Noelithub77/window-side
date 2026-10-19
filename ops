@@ -7,11 +7,17 @@ case "${1:---help}" in
     cat <<'HELP'
 Usage: ./ops <command>
 
-  check                 Run unit tests, Clippy and CLI fixtures; no VM or desktop actions
+  check                 Run unit tests, Clippy and CLI/installer fixtures; no VM or desktop actions
+  check:release         Run those checks against the optimized release
+  test:install          Check installer changes inside a temporary prefix
+  release:build         Build the optimized ws binary with the locked dependencies
+  release:package --output DIR  Archive the release binary, installer and checksums
+  aur:prepare --source-archive FILE --output DIR  Generate checksummed AUR metadata
   test:first-boot        Check readiness and rollback with a fake guest
   guest:check            Read-only script/guard/driver checks in the running QEMU guest
   build                 Build the native ws binary with the existing Cargo cache
   gui:test --output DIR Check teal setup/status pixels and keyboard navigation in OmaBox
+  gui:installed --binary FILE --output DIR  Open an installed binary in a fresh OmaBox HOME
 
 The GUI test uses synthetic hardware in a fresh HOME, no guest disk or credentials.
 DIR must be a new absolute directory. Requires built target/debug/ws, omabox,
@@ -22,11 +28,24 @@ HELP
     cargo test -j 2
     cargo clippy -j 2 --all-targets -- -D warnings
     cargo build -j 2
-    exec bash "$root/tests/first-boot.sh"
+    bash "$root/tests/first-boot.sh"
+    exec bash "$root/tests/install.sh"
     ;;
+  check:release)
+    cargo test --release --locked -j 2
+    cargo clippy --release --locked -j 2 --all-targets -- -D warnings
+    cargo build --release --locked -j 2
+    WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/first-boot.sh"
+    exec bash "$root/tests/install.sh"
+    ;;
+  test:install) exec bash "$root/tests/install.sh" ;;
+  release:build) exec cargo build --release --locked -j 2 ;;
+  release:package) shift; exec bash "$root/scripts/package-release.sh" "$@" ;;
+  aur:prepare) shift; exec bash "$root/scripts/prepare-aur.sh" "$@" ;;
   test:first-boot) exec bash "$root/tests/first-boot.sh" ;;
   guest:check) exec bash "$root/tests/guest-check.sh" ;;
   build) exec cargo build -j 2 ;;
   gui:test) shift; exec "$root/scripts/gui-test.sh" "$@" ;;
+  gui:installed) shift; exec "$root/scripts/installed-gui-test.sh" "$@" ;;
   *) echo 'Use ./ops --help' >&2; exit 2 ;;
 esac

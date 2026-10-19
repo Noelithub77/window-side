@@ -126,3 +126,22 @@ release packaging remains phase 5; a working window does not prove those flows.
 - No real provisioning, driver installation, storage-bus transition, native
   Windows boot or Linux reboot was performed. The test VM was shut down
   afterward. The installed global `ws` still uses the legacy script.
+
+
+### Phase 5 implementation, 20 October 2026
+
+- Added a local source/archive installer with explicit replacement, backups,
+  dry runs and symlink-safe replacement. It installs app files only.
+- Built the optimized binary, verified the release-profile unit/Clippy/CLI
+  checks, and installed it as the global `~/.local/bin/ws`. Dotfiles no longer
+  stows the legacy launcher or desktop entry; its operator delegates to ws.
+- Added Arch CI and tag-triggered draft prerelease packaging. The source
+  archive/checksum metadata for AUR is generated from a reviewed tag archive;
+  no package was submitted to the AUR.
+- The installed optimized binary opened in an isolated fresh HOME. Window pixels,
+  the keyboard appearance menu, dismissal and quit passed; no setup was applied.
+- Release archive checksums and a temporary-prefix installation passed.
+  `makepkg --printsrcinfo` accepted generated metadata from a source fixture.
+- Repository visibility remains private. Fresh installation, actual storage
+  migration, same-drive assembly and native Windows boot remain runtime gaps;
+  this packaging work does not establish a stable public release.

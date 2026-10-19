@@ -1,0 +1,44 @@
+# Maintainer: Noel Georgi
+pkgname=window-side
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Use your dual-boot Windows installation as a headless KVM guest'
+arch=('x86_64')
+url='https://github.com/Noelithub77/window-side'
+license=('MIT')
+depends=('glibc' 'gcc-libs' 'libxcb' 'libxkbcommon' 'libxkbcommon-x11' 'fontconfig'
+         'wayland' 'vulkan-icd-loader' 'libvirt' 'qemu-base' 'swtpm' 'dnsmasq'
+         'edk2-ovmf' 'virt-viewer' 'libsecret' 'libisoburn' 'libarchive' 'udisks2'
+         'dosfstools' 'device-mapper' 'pciutils' 'polkit' 'curl' 'openssh')
+makedepends=('rust' 'clang' 'cmake' 'pkgconf' 'vulkan-headers')
+checkdepends=('jq' 'ripgrep' 'desktop-file-utils')
+optdepends=('looking-glass: GPU passthrough viewer; the IDD requires the matching client build'
+            'hyprland: focus the existing Windows viewer')
+conflicts=('ws')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# Generated from the reviewed tag archive by ./ops aur:prepare.
+sha256sums=('@SHA256@')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  cargo fetch --locked --target x86_64-unknown-linux-gnu
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  cargo build --release --frozen -j 2
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  cargo test --release --frozen -j 2
+  WS_TEST_BINARY="$PWD/target/release/ws" bash tests/first-boot.sh
+  bash tests/install.sh
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/ws "$pkgdir/usr/bin/ws"
+  install -Dm644 packaging/window-side.desktop "$pkgdir/usr/share/applications/window-side.desktop"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/window-side/LICENSE"
+}

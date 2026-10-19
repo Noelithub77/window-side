@@ -1,0 +1,23 @@
+[Desktop Entry]
+Name=window-side
+Comment=Manage your dual-boot Windows virtual machine
+Exec=ws
+Icon=computer
+Terminal=false
+Type=Application
+Categories=System;Emulator;
+StartupNotify=true
+StartupWMClass=window-side
+Actions=Launch;Console;Stop;
+
+[Desktop Action Launch]
+Name=Start Windows
+Exec=ws launch
+
+[Desktop Action Console]
+Name=Open Windows
+Exec=ws console
+
+[Desktop Action Stop]
+Name=Shut down Windows
+Exec=ws stop

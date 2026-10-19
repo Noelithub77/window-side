@@ -1,71 +1,143 @@
 # window-side
 
-Run your real dual-boot Windows install as a headless VM from Linux, and boot
-the same install natively when you need it.
+One Windows installation: boot it natively when you need it, or run it as a
+headless KVM guest while working in Linux. Agents can execute PowerShell,
+transfer files and test Windows applications without maintaining a second
+Windows install.
 
-Work in progress; see `plan/v1/summary.md`.
+`ws` opens a native black and teal setup/status window. Explicit commands such
+as `ws start`, `ws exec` and `ws ssh` stay in the terminal. The app and CLI are
+one Rust binary with embedded Windows scripts; no Python runtime is required.
+Looking Glass provides the passthrough desktop, while window-side manages the
+VM, machine setup, guest commands and optional Omarchy panel around it.
 
-The built `ws` binary opens the native setup/status window. `ws --help` and explicit commands
-stay in the terminal. The default appearance is black and teal; the
-Appearance menu optionally reads Omarchy's `colors.toml`. If that theme file is
-unavailable, teal stays active and the window explains the missing file.
+## Current status
 
-The wizard detects Windows partitions and graphics, offers resource allocation,
-and previews the setup before administrator approval. Opening it does not
-configure disks or restart the computer. The first-boot guest workflow is implemented, with fixture verification; a fresh
-Windows installation and native-boot compatibility still need runtime testing.
-Public packaging and migration of the installed legacy launcher remain planned.
+Prerelease for Arch Linux x86_64, with UEFI Windows and libvirt/KVM. The existing
+Windows VM, CLI, installation and isolated native interface have been checked.
+Fresh Windows provisioning, the SATA-to-VirtIO transition, same-drive virtual
+disk assembly and native-boot compatibility remain unverified end to end.
+The repository remains private while those checks are open. VMware is outside
+this version's scope.
 
-Development commands:
+## Install
+
+From a release archive, extract it and run `./install.sh`. From source:
 
 ```sh
-./ops build
+git clone https://github.com/Noelithub77/window-side.git
+cd window-side
+./install.sh
+ws
+```
+
+The source installer builds with the checked-in Cargo lockfile. Build tools on
+Arch are `base-devel`, `rust`, `clang`, `cmake`, `pkgconf`, `libxcb`,
+`libxkbcommon`, `libxkbcommon-x11`, `fontconfig`, `wayland`, `vulkan-headers`
+and `vulkan-icd-loader`. A working Vulkan driver is needed for the window.
+
+The installer puts the binary and application entry under `~/.local` and
+preserves machine configuration. It does not start a VM, install packages or
+change boot entries. The setup window detects Windows partitions and graphics,
+lets you choose resources, and reviews machine changes before administrator
+approval. GPU boot profiles currently use Limine on Arch/Omarchy.
+
+Useful installer options:
+
+```sh
+./install.sh --dry-run
+./install.sh --binary /path/to/ws --prefix /absolute/prefix
+./install.sh --binary /path/to/ws --replace-existing
+```
+
+Unknown existing files require `--replace-existing`. Backups go under
+`~/.local/state/window-side/install-backups`; links are replaced themselves,
+so their source files are not overwritten. `~/.local/bin` must be on PATH.
+The Arch package recipe is generated with `./ops aur:prepare` from a reviewed
+tag source archive; it has not been published to the AUR.
+
+## Windows setup
+
+Keep Windows partitions unmounted on Linux while the VM uses them. The setup
+engine supports a separate Windows drive and has an experimental same-drive
+mode that exposes only the Windows partition with copied EFI boot files.
+BitLocker can require its recovery key because the VM has a different TPM.
+Use a backed-up installation; same-drive support is not yet runtime verified.
+
+First boot uses SATA and an emulated network adapter until the guest drivers
+are installed. The desktop guides the flow; agents can use:
+
+```sh
+ws setup detect
+ws setup plan --gpu none
+ws setup first-boot status
+ws setup first-boot start
+# Inside Windows: run virtio-win-guest-tools.exe from the driver CD, then sign in.
+ws setup first-boot finish
+```
+
+`finish` verifies the drivers, closes Windows apps through a clean shutdown,
+and restarts with VirtIO. Configured passthrough needs the GPU boot profile
+first. Provisioning disables Fast Startup and hibernation in the shared Windows
+install, including native boots. Original power values are recorded in
+`C:\ProgramData\window-side\power-before.json`.
+
+If the transition fails, stop Windows and run `ws setup first-boot recover` to
+restore the saved SATA definition. Recovery verifies disk identity and never
+force-stops Windows. Completion is saved only after the post-transition guest
+agent answers; unqueried driver readings are null.
+
+`ws setup plugin` installs the bundled Omarchy panel. Existing directory or
+file symlinks report `managed-externally` and stay intact. The installer does
+not install or enable the panel automatically.
+
+## Agent access
+
+```sh
+ws --help
+ws status
+ws start
+ws exec --file /absolute/check.ps1 --timeout 60 --json
+ws ssh '$PSVersionTable.PSVersion.ToString()'
+ws ssh --put /absolute/input.bin 'C:/Users/YourUser/AppData/Local/Temp/input.bin'
+ws metrics
+ws stop
+```
+
+`start` is headless; `launch` also opens the viewer, and `console` opens a
+running guest. Guest-agent PowerShell runs as Windows SYSTEM in session 0.
+SSH uses the configured user, an existing key and strict host-key trust;
+server provisioning is separate. Neither shell path automatically enters the
+visible Windows desktop. GUI automation needs a signed-in interactive session.
+
+`ws sign-in setup` optionally stores a console credential in the Linux login
+keyring from a terminal. Native Windows auto-login stays off. Starting the VM
+from an unlocked Linux session can then open the Windows desktop.
+
+The normal host profile keeps the GPU on Linux. The passthrough profile gives
+Windows exclusive use of the selected GPU until Linux reboots normally.
+Looking Glass requires a client matching the embedded IDD build; `ws
+looking-glass-setup` installs the guest side. Host reboot is explicit.
+
+## Development and release
+
+```sh
 ./ops check
+./ops check:release
 ./ops gui:test --output /tmp/window-side-ui-check
+./ops gui:installed --binary /absolute/ws --output /tmp/window-side-installed-check
+./ops guest:check
+./ops release:package --output /absolute/new-release-directory
 ```
 
-The GUI check uses synthetic hardware and read-only fixtures in an invisible
-OmaBox session. It verifies native pixels and keyboard navigation; it does not
-apply setup, boot Windows, or verify a real GPU handoff.
+CLI fixtures fake libvirt and the guest agent. GUI fixtures use synthetic
+hardware in an invisible OmaBox with guest/setup actions disabled. The installed
+GUI check uses a fresh box HOME and only opens/dismisses its appearance menu.
+`guest:check` requires an already running QEMU guest and reads script syntax,
+VM guards and driver readiness without applying provisioning.
 
-
-First boot, from the built binary:
-
-```sh
-target/debug/ws setup first-boot status
-target/debug/ws setup first-boot start
-# Inside Windows: sign in and run virtio-win-guest-tools.exe from the driver CD.
-target/debug/ws setup first-boot finish
-```
-
-`finish` closes Windows apps through a clean shutdown and restarts the VM after
-checking the storage and network drivers. If GPU passthrough was selected, use
-the GPU boot profile first. This provisions the shared Windows install: Fast
-Startup and hibernation are disabled, including on native boots. The original
-power values are recorded in `C:\ProgramData\window-side\power-before.json`.
-Automatic sign-in remains optional through `ws sign-in setup` in a terminal;
-credentials stay in the Linux login keyring.
-
-If the VirtIO transition fails, stop Windows and run
-`target/debug/ws setup first-boot recover` to restore the saved SATA definition.
-Recovery checks the configured disk identity and never force-stops Windows.
-`setup first-boot status` reports saved completion separately from live driver
-readings; unqueried readings are null. Completion is saved only after the
-post-transition guest agent answers.
-
-`target/debug/ws setup plugin` repairs the bundled Omarchy panel. It returns
-`managed-externally` and leaves existing directory or file symlinks intact.
-
-Developer fixtures:
-
-```sh
-./ops check
-./ops test:first-boot
-./ops guest:check  # Read-only checks; requires an already running QEMU guest.
-./ops gui:test --output /tmp/window-side-first-boot-check
-```
-
-The CLI fixtures fake libvirt and the guest agent; the GUI fixtures fake guest
-actions in an invisible OmaBox. Neither provisions Windows or changes a real
-boot disk. The first-boot sources and test boundaries are described in
-`plan/v1/first-boot.md`.
+Tag workflows build on Arch, verify the tag against the binary version and
+create a **draft prerelease** with the archive and checksum. Release promotion
+and AUR publication remain manual. Packaging refuses dirty source unless
+`--allow-dirty` explicitly marks a local preview. See `plan/v1/` for decisions,
+verification evidence and remaining runtime work.

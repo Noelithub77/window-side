@@ -52,7 +52,7 @@ user = "tester"
 refresh_hz = "60"
 provisioned = false
 CONFIG
-binary="$root/target/debug/ws"
+binary="${WS_TEST_BINARY:-$root/target/debug/ws}"
 status() { "$binary" setup first-boot status; }
 status | jq -e '.stage == "start" and .environment == "window-side-libvirt"' >/dev/null
 export WS_TEST_STATE=running
