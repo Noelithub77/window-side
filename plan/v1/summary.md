@@ -16,7 +16,7 @@ files, sign in and test Windows apps from Linux.
 | Repo | **[chosen]** `Noelithub77/window-side`, private until v1 works, then public. Noel's dotfiles track it as the submodule `apps/window-side`. |
 | Personal values | Never committed here. Setup detects them and writes `~/.config/window-side/config.toml`. |
 | Windows location | **[chosen]** Auto-detected. Own drive: pass the whole drive. Same drive as Linux: a virtual disk assembled at boot by a root service from a small image (GPT and a copy of the Windows boot files) plus the real Windows partition, joined with device-mapper. Linux partitions are never exposed. |
-| Colours | **[chosen]** A window-side palette by default, with an option to follow the active Omarchy theme (`colors.toml`). |
+| Colours | **[chosen]** Near-black and teal by default: evergreen surfaces, pine-teal selection, mint accents and frosted-mint text. An optional Omarchy appearance reads the active `colors.toml`; missing colors produce an error and preserve teal. |
 
 ## Behaviour change
 
@@ -66,3 +66,30 @@ Host tools called at runtime: `virsh`, `lsblk`, `findmnt`, `udisksctl`,
 
 Phase 1 drops two SPICE-only measurement tools from the old scripts:
 `frames` and `display-check`.
+
+## Window implementation
+
+Phase 3 uses one GPUI root with a status view or a four-step setup wizard.
+The window owns navigation, choices and in-flight operations; the existing
+setup engine owns detection, plans and privileged apply. Windows usage comes
+from the same `metrics` command as the panel. Blocking work runs off the UI
+thread. Nothing is applied merely by opening the window or reaching review.
+
+Theme definitions live in `src/gui/theme.rs`; views read semantic tokens.
+`appearance.toml` stores only the appearance choice beside the machine config.
+Normal CLI commands keep their terminal behavior; bare `ws` opens the window.
+
+The first-boot driver and guest provisioning flow remains phase 4. Public
+release packaging remains phase 5; a working window does not prove those flows.
+
+### Phase 3 verification, 19 October 2026
+
+- Native debug build, 24 unit tests and Clippy with warnings denied passed.
+- `./ops gui:test` passed in an invisible OmaBox: keyboard step transitions,
+  pointer/radio choices, resource changes via sliders and keyboard buttons,
+  review/back navigation, status pixels and appearance menu dismissal.
+- The resource page was also inspected at the 640×500 minimum window size.
+- The fixtures use synthetic hardware and disable guest/setup actions. No
+  privileged setup, Windows boot, GPU handoff or live desktop launch was tested.
+- The installed global `ws` still uses the legacy launcher. The new window is
+  available from this checkout's `target/debug/ws`; installer migration is pending.

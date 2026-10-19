@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+cd "$root"
+case "${1:---help}" in
+  --help|-h|help)
+    cat <<'HELP'
+Usage: ./ops <command>
+
+  check                 Run unit tests and Clippy; no VM or desktop actions
+  build                 Build the native ws binary with the existing Cargo cache
+  gui:test --output DIR Check teal setup/status pixels and keyboard navigation in OmaBox
+
+The GUI test uses synthetic hardware in a fresh HOME, no guest disk or credentials.
+DIR must be a new absolute directory. Requires built target/debug/ws, omabox,
+tesseract, jq and ImageMagick. It never launches or restarts the live desktop.
+HELP
+    ;;
+  check)
+    cargo test -j 2
+    cargo clippy -j 2 --all-targets -- -D warnings
+    ;;
+  build) exec cargo build -j 2 ;;
+  gui:test) shift; exec "$root/scripts/gui-test.sh" "$@" ;;
+  *) echo 'Use ./ops --help' >&2; exit 2 ;;
+esac

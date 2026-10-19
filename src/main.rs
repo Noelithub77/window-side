@@ -5,21 +5,24 @@ mod config;
 mod detect;
 mod display;
 mod guest;
+mod gui;
 mod host;
 mod notify;
 mod process;
 mod setup;
 mod vm;
 
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let cli::Cli { command } = cli::Cli::parse();
-    // The window arrives with the setup flow; until then bare `ws` shows help.
     let Some(action) = command else {
-        let _ = cli::Cli::command().print_help();
-        return ExitCode::SUCCESS;
+        return if gui::run() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
     };
     let notifies = action.notifies();
     match cli::run(action) {
