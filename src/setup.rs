@@ -217,15 +217,31 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
             })
         }
     };
-    let mut packages: Vec<String> = system.missing.iter().map(|missing| missing.package.to_owned()).collect();
-    if !Path::new("/usr/share/edk2/x64").exists() {
-        packages.push("edk2-ovmf".into());
-    }
+    let packages = packages(system)?;
     let member_of = text("id", &["-nG", &system.user]).unwrap_or_default();
     let groups = ["libvirt", "kvm"].iter().filter(|group| !member_of.split_whitespace().any(|name| name == **group)).map(|group| (*group).to_owned()).collect();
-    let root = RootPlan { user: system.user.clone(), packages, groups, files, virtual_disk, gpu_kernel };
+    let root = RootPlan { user: system.user.clone(), distro: system.distro, packages, groups, files, virtual_disk, gpu_kernel };
     root.validate()?;
     Ok(Plan { config, domain_xml, root, plugin: choices.plugin, notes })
+}
+
+/// Packages providing the missing commands and the UEFI firmware.
+fn packages(system: &System) -> Result<Vec<String>> {
+    let Some(family) = system.distro else {
+        if system.missing.is_empty() {
+            return Ok(Vec::new());
+        }
+        let commands: Vec<_> = system.missing.iter().map(|missing| missing.command).collect();
+        bail!("Install the packages that provide {} with your package manager, then run setup again.", commands.join(", "));
+    };
+    let mut packages: Vec<String> = Vec::new();
+    let firmware = (!family.firmware_present()).then(|| family.firmware_package());
+    for package in system.missing.iter().flat_map(|missing| missing.packages.iter().copied()).chain(firmware) {
+        if !packages.iter().any(|known| known == package) {
+            packages.push(package.to_owned());
+        }
+    }
+    Ok(packages)
 }
 
 /// Writes everything: one pkexec prompt for the system side, then the user config and the VM.

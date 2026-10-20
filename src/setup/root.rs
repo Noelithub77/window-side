@@ -1,5 +1,6 @@
 //! Root side of setup, run once through pkexec. It only writes allowlisted files,
 //! installs known packages and adds the invoking user to the VM groups.
+use crate::detect::distro::Family;
 use crate::process::{output, text, text_with_input};
 use crate::setup::files::{self, ALLOWED, GPU_ENTRY, SystemFile};
 use anyhow::{Context, Result, bail};
@@ -18,10 +19,6 @@ pub const FOOTER_SECTORS: u64 = 2048;
 const ESP_TYPE: &str = "C12A7328-F81F-11D2-BA4B-00A0C93EC93B";
 const BASIC_DATA_TYPE: &str = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7";
 
-pub const PACKAGES: &[&str] = &[
-    "libvirt", "qemu-base", "swtpm", "dnsmasq", "edk2-ovmf", "virt-viewer", "libsecret", "libisoburn",
-    "libarchive", "udisks2", "dosfstools", "device-mapper", "pciutils",
-];
 const GROUPS: &[&str] = &["libvirt", "kvm"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +34,7 @@ pub struct VirtualDisk {
 #[serde(rename_all = "camelCase")]
 pub struct RootPlan {
     pub user: String,
+    pub distro: Option<Family>,
     pub packages: Vec<String>,
     pub groups: Vec<String>,
     pub files: Vec<SystemFile>,
@@ -51,7 +49,7 @@ impl RootPlan {
         if let Some(file) = self.files.iter().find(|file| !ALLOWED.contains(&file.path.as_str())) {
             bail!("Refusing to write {}", file.path);
         }
-        if let Some(package) = self.packages.iter().find(|package| !PACKAGES.contains(&package.as_str())) {
+        if let Some(package) = self.packages.iter().find(|package| !self.distro.is_some_and(|family| family.known(package))) {
             bail!("Refusing to install {package}");
         }
         if let Some(group) = self.groups.iter().find(|group| !GROUPS.contains(&group.as_str())) {
@@ -85,10 +83,8 @@ pub fn apply(plan_path: &Path) -> Result<()> {
     let plan: RootPlan = serde_json::from_str(&fs::read_to_string(plan_path)?).context("Invalid setup plan")?;
     plan.validate()?;
     verify_caller(&plan.user)?;
-    if !plan.packages.is_empty() {
-        let mut args = vec!["-S", "--needed", "--noconfirm"];
-        args.extend(plan.packages.iter().map(String::as_str));
-        text("pacman", &args).context("Could not install the required packages")?;
+    if let Some(family) = plan.distro.filter(|_| !plan.packages.is_empty()) {
+        install(family, &plan.packages)?;
     }
     for file in &plan.files {
         write(file)?;
@@ -96,7 +92,8 @@ pub fn apply(plan_path: &Path) -> Result<()> {
     if !plan.groups.is_empty() {
         text("usermod", &["-aG", &plan.groups.join(","), &plan.user])?;
     }
-    text("systemctl", &["enable", "--now", "libvirtd.service"]).context("Could not start libvirt")?;
+    let units = plan.distro.map_or(&["libvirtd.service"][..], Family::libvirt_units);
+    text("systemctl", &[&["enable", "--now"][..], units].concat()).context("Could not start libvirt")?;
     text("systemctl", &["daemon-reload"])?;
     if let Some(disk) = &plan.virtual_disk {
         let _ = output("systemctl", &["stop", "window-side-disk.service"]);
@@ -111,6 +108,19 @@ pub fn apply(plan_path: &Path) -> Result<()> {
         None => None,
     };
     println!("{}", json!({"normalEntry": entries.as_ref().map(|e| &e.0), "gpuEntry": entries.as_ref().map(|e| &e.1)}));
+    Ok(())
+}
+
+fn install(family: Family, packages: &[String]) -> Result<()> {
+    let (program, flags) = family.installer();
+    let args: Vec<&str> = flags.iter().copied().chain(packages.iter().map(String::as_str)).collect();
+    let mut result = text(program, &args);
+    // A fresh Ubuntu install may have no package lists yet.
+    if result.is_err() && family == Family::Debian {
+        text("apt-get", &["update"]).context("Could not refresh the package lists")?;
+        result = text(program, &args);
+    }
+    result.context("Could not install the required packages")?;
     Ok(())
 }
 
@@ -255,7 +265,7 @@ mod tests {
     #[test]
     fn plans_outside_the_allowlist_are_rejected() {
         let plan = RootPlan {
-            user: "noel".into(), packages: vec!["libvirt".into()], groups: vec!["libvirt".into()],
+            user: "noel".into(), distro: Some(Family::Arch), packages: vec!["libvirt".into()], groups: vec!["libvirt".into()],
             files: vec![SystemFile { path: files::TMPFILES_CONF.into(), contents: String::new(), mode: 0o644 }],
             virtual_disk: None, gpu_kernel: Some("linux-omarchy".into()),
         };
@@ -263,6 +273,9 @@ mod tests {
         let bad_file = RootPlan { files: vec![SystemFile { path: "/etc/sudoers".into(), contents: String::new(), mode: 0o644 }], ..plan.clone() };
         assert!(bad_file.validate().is_err());
         assert!(RootPlan { packages: vec!["evil".into()], ..plan.clone() }.validate().is_err());
+        assert!(RootPlan { packages: vec!["qemu-system-x86".into()], ..plan.clone() }.validate().is_err());
+        assert!(RootPlan { distro: Some(Family::Debian), packages: vec!["qemu-system-x86".into()], ..plan.clone() }.validate().is_ok());
+        assert!(RootPlan { distro: None, ..plan.clone() }.validate().is_err());
         assert!(RootPlan { groups: vec!["wheel".into()], ..plan.clone() }.validate().is_err());
         assert!(RootPlan { user: "x; rm".into(), ..plan }.validate().is_err());
     }

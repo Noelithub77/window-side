@@ -1,4 +1,5 @@
 //! CPU, memory, boot loader and tool facts that shape the VM and the GPU boot profile.
+use super::distro::{self, Family};
 use crate::display::hyprland;
 use crate::process::{has_command, text};
 use serde::Serialize;
@@ -21,21 +22,17 @@ pub struct System {
     pub refresh_hz: String,
     pub user: String,
     pub omarchy: bool,
+    /// Package family from os-release; `None` when ws cannot install packages here.
+    pub distro: Option<Family>,
     pub missing: Vec<Requirement>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Requirement {
     pub command: &'static str,
-    pub package: &'static str,
+    /// Empty on distros ws does not know.
+    pub packages: &'static [&'static str],
 }
-
-/// Commands ws calls, with the Arch package providing each.
-const REQUIREMENTS: &[(&str, &str)] = &[
-    ("virsh", "libvirt"), ("qemu-system-x86_64", "qemu-base"), ("swtpm", "swtpm"), ("dnsmasq", "dnsmasq"),
-    ("virt-viewer", "virt-viewer"), ("secret-tool", "libsecret"), ("xorriso", "libisoburn"), ("bsdtar", "libarchive"),
-    ("udisksctl", "udisks2"), ("mkfs.fat", "dosfstools"), ("dmsetup", "device-mapper"), ("lspci", "pciutils"),
-];
 
 /// Parses kernel CPU lists such as `0-3,8,10-11`.
 pub fn cpu_list(list: &str) -> Vec<u32> {
@@ -72,11 +69,13 @@ fn limine_kernel() -> Option<String> {
     }
     let release = fs::read_to_string("/proc/sys/kernel/osrelease").ok()?;
     let vmlinuz = format!("/usr/lib/modules/{}/vmlinuz", release.trim());
+    // Limine GPU profiles use mkinitcpio, so the kernel comes from pacman.
     text("pacman", &["-Qoq", &vmlinuz]).ok().map(|package| package.trim().to_owned()).filter(|package| !package.is_empty())
 }
 
 pub fn detect() -> System {
     let cpuinfo = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+    let family = distro::detect();
     let siblings = read_list("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
     System {
         cpus: read_list("/sys/devices/system/cpu/online"),
@@ -90,10 +89,10 @@ pub fn detect() -> System {
         refresh_hz: hyprland::refresh_rate().unwrap_or_else(|| "60".to_owned()),
         user: std::env::var("USER").unwrap_or_default(),
         omarchy: has_command("omarchy"),
-        missing: REQUIREMENTS
-            .iter()
-            .filter(|(command, _)| !has_command(command))
-            .map(|&(command, package)| Requirement { command, package })
+        distro: family,
+        missing: distro::commands()
+            .filter(|command| !has_command(command))
+            .map(|command| Requirement { command, packages: family.map_or(&[], |family| family.packages(command)) })
             .collect(),
     }
 }

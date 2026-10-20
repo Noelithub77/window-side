@@ -53,6 +53,7 @@ pub(super) fn detection() -> Detection {
                 refresh_hz: "165".into(),
                 user: "fixture".into(),
                 omarchy: true,
+                distro: Some(crate::detect::distro::Family::Arch),
                 missing: vec![],
             },
         },
@@ -69,7 +70,7 @@ pub(super) fn plan(choices: &crate::setup::Choices) -> crate::setup::Plan {
             windows: Windows { provisioned: false, user: String::new(), refresh_hz: "165".into() }, boot: Boot::default(), hooks: Hooks::default(),
         },
         domain_xml: String::new(), plugin: choices.plugin,
-        root: crate::setup::root::RootPlan { user: "fixture".into(), packages: vec![], groups: vec![], files: vec![], virtual_disk: None, gpu_kernel: None },
+        root: crate::setup::root::RootPlan { user: "fixture".into(), distro: Some(crate::detect::distro::Family::Arch), packages: vec![], groups: vec![], files: vec![], virtual_disk: None, gpu_kernel: None },
         notes: choices.gpu.as_ref().map(|_| "The GPU profile reserves the selected GPU for Windows until Linux restarts in the normal profile.".into()).into_iter().collect(),
     }
 }

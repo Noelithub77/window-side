@@ -26,7 +26,10 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
 ## Order
 
 1. UI polish, onboarding, dashboard waves, panel actions and settings.
-2. Distro layer: os-release detection, package and firmware maps.
+2. Distro layer: os-release detection, package and firmware maps. Done.
+   Unknown distros get a clear "install these commands" message instead of
+   a package install. Ubuntu needs no AppArmor file: libvirt's `virt-aa-helper`
+   is expected to allow the `<shmem>` device (unverified on Ubuntu).
 3. Desktop layer: focus and refresh rate on Hyprland, KDE and GNOME.
 4. GPU usage in guest metrics.
 5. Tray.
@@ -34,5 +37,6 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
 7. One-command install.
 
 Each step is committed separately with its verification. Ubuntu and Fedora
-checks run in containers (detection, package plans, generated boot files);
+checks run in containers (detection, package plans, generated boot files)
+when Docker access is available; until then they are unit tests only;
 real reboots on those distros stay unverified until tested on hardware.
