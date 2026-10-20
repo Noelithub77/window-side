@@ -9,6 +9,7 @@ cp "$root/install.sh" "$root/LICENSE" "$root/README.md" "$source_root/"
 cp "$root/scripts/package-release.sh" "$root/scripts/system-deps.sh" "$source_root/scripts/"
 cp "$root/packaging/window-side.desktop" "$source_root/packaging/"
 cp -R "$root/icons" "$source_root/"
+cp -R "$root/docs" "$source_root/"
 printf '#!/usr/bin/env bash\nprintf "ws 0.1.0\\n"\n' > "$source_root/target/release/ws"
 chmod +x "$source_root/target/release/ws"
 git -C "$source_root" init -q
@@ -17,6 +18,7 @@ git -C "$source_root" -c user.name=Fixture -c user.email=fixture@example.invalid
 bash "$source_root/scripts/package-release.sh" --output "$fixture/release"
 tar -xzf "$fixture/release/window-side-0.1.0-linux-x86_64.tar.gz" -C "$fixture"
 diff -qr "$root/icons/hicolor" "$fixture/window-side-0.1.0-linux-x86_64/icons/hicolor"
+diff -qr "$root/docs" "$fixture/window-side-0.1.0-linux-x86_64/docs"
 # Run just the package function, without building or installing system packages.
 cat > "$fixture/bin/gtk-update-icon-cache" <<'CACHE'
 #!/usr/bin/env bash

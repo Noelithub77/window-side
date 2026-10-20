@@ -35,6 +35,7 @@ install -m 644 "$root/packaging/window-side.desktop" "$stage/$name/packaging/win
 mkdir -p "$stage/$name/icons"
 cp -R "$root/icons/hicolor" "$stage/$name/icons/"
 install -m 644 "$root/LICENSE" "$root/README.md" "$stage/$name/"
+cp -R "$root/docs" "$stage/$name/"
 printf 'version=%s\nrevision=%s\ndirty=%s\nbuildPlatform=Arch Linux x86_64\n' "$version" "$revision" "$dirty" > "$stage/$name/build-info.txt"
 epoch=$(git -C "$root" show -s --format=%ct HEAD)
 tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -C "$stage" -cf - "$name" | gzip -n > "$output/$name.tar.gz"

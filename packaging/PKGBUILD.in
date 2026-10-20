@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc='Use your dual-boot Windows installation as a headless KVM guest'
 arch=('x86_64')
 url='https://github.com/Noelithub77/window-side'
-license=('MIT')
+license=('GPL-2.0-or-later')
 depends=('glibc' 'gcc-libs' 'webkit2gtk-4.1' 'gtk3' 'openssl'
          'wayland' 'vulkan-icd-loader' 'libvirt' 'qemu-base' 'swtpm' 'dnsmasq'
          'edk2-ovmf' 'virt-viewer' 'libsecret' 'libisoburn' 'libarchive' 'udisks2'

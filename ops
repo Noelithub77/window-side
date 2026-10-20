@@ -52,6 +52,7 @@ HELP
     bash "$root/tests/first-boot.sh"
     bash "$root/tests/packages.sh"
     bash "$root/tests/icon-packaging.sh"
+    bash "$root/tests/bootstrap.sh"
     exec bash "$root/tests/install.sh"
     ;;
   check:release)
@@ -63,6 +64,7 @@ HELP
     WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/first-boot.sh"
     WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/packages.sh"
     bash "$root/tests/icon-packaging.sh"
+    bash "$root/tests/bootstrap.sh"
     exec bash "$root/tests/install.sh"
     ;;
   ci:run) shift; exec bash "$root/scripts/ci-run.sh" "$@" ;;

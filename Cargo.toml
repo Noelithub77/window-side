@@ -3,7 +3,7 @@ name = "window-side"
 version = "0.1.0"
 edition = "2024"
 description = "Run your dual-boot Windows install as a headless VM from Linux"
-license = "MIT"
+license = "GPL-2.0-or-later"
 repository = "https://github.com/Noelithub77/window-side"
 
 [[bin]]
