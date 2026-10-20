@@ -5,7 +5,7 @@ import { motion } from "motion/react"
 import { IconTile } from "@/components/app/IconTile"
 import { WindowsMark } from "@/components/app/WindowsMark"
 import { Slider } from "@/components/ui/slider"
-import type { Choices, Host } from "@/lib/contract"
+import type { Choices, Host } from "@/bindings"
 import { cn } from "@/lib/utils"
 
 type Props = { host: Host; choices: Choices; change: (next: Partial<Choices>) => void }

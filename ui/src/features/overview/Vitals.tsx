@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Cpu, Gpu, MemoryStick, Network } from "lucide-react
 import { AnimatePresence, motion } from "motion/react"
 import { Area, AreaChart, CartesianGrid, YAxis } from "recharts"
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart"
-import type { Sample } from "@/lib/contract"
+import type { Sample } from "@/bindings"
 import { bytes } from "@/lib/format"
 import { useApp } from "@/lib/store"
 import { Caption, Gauge, Tile } from "@/features/overview/Gauge"

@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import { toast } from "sonner"
 import { api, message, subscribe } from "@/lib/api"
-import type { Action, Detection, Metrics, Shell, Status } from "@/lib/contract"
+import type { Action, Detection, Metrics, Shell, Status } from "@/bindings"
 
 export type Page = "overview" | "settings"
 

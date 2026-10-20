@@ -10,7 +10,7 @@ import type {
   Sample,
   Shell,
   Status,
-} from "@/lib/contract"
+} from "@/bindings"
 
 const scenario = new URLSearchParams(window.location.search).get("fixture") ?? "setup"
 const HISTORY = 48

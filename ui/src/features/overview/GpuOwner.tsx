@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { BootProfile } from "@/lib/contract"
+import type { BootProfile } from "@/bindings"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
 

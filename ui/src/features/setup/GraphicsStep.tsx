@@ -3,7 +3,7 @@ import { motion } from "motion/react"
 import { ChoiceCard } from "@/components/app/ChoiceCard"
 import { IconTile } from "@/components/app/IconTile"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { Choices, Detection, GpuBlocker, GpuOption } from "@/lib/contract"
+import type { Choices, Detection, GpuBlocker, GpuOption } from "@/bindings"
 
 type Props = { detection: Detection; choices: Choices; change: (next: Partial<Choices>) => void }
 

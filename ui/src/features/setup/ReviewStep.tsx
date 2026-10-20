@@ -6,7 +6,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { CodeBlock, CodeBlockContent, CodeBlockHeader, CodeBlockTitle } from "@/components/ui/code-block"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { Plan } from "@/lib/contract"
+import type { Plan } from "@/bindings"
 
 const FACT_ICONS: Record<string, { icon: LucideIcon; color: string }> = {
   Windows: { icon: HardDrive, color: "var(--sky)" },

@@ -3,7 +3,7 @@ import { motion } from "motion/react"
 import { Badge } from "@/components/ui/badge"
 import { ChoiceCard } from "@/components/app/ChoiceCard"
 import { IconTile } from "@/components/app/IconTile"
-import type { Choices, Detection } from "@/lib/contract"
+import type { Choices, Detection } from "@/bindings"
 import { bytes } from "@/lib/format"
 
 type Props = { detection: Detection; choices: Choices; change: (next: Partial<Choices>) => void }
