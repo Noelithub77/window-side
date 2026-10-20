@@ -43,6 +43,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Trust the container checkout for shell steps
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Locate pnpm store
         id: pnpm
         run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
