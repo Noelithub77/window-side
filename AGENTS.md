@@ -73,9 +73,8 @@ Rust caches are separate; manual release runs warm the default-branch cache for 
 
 - Calm, minimal, pastel and rounded (Luma-like). Show state with chips, dots and icons, not sentences.
 - One entry point per action; secondary actions go in menus. Destructive actions need a second click.
-- The lead owns screens, components, styles and browser mock data in `ui/src/`. Rust owns setup, host and VM logic. `api.ts` adapts generated commands; it contains no business logic.
+- `ui/src/` holds screens, components, styles and browser mock data. Rust owns setup, host and VM logic. `api.ts` adapts generated commands; it contains no business logic.
 - Use oxlint, never ESLint. Add no formatters or formatter configs.
-- Creative UI work stays with the lead agent; give most mechanical work to one GPT-6.1-Sol subagent on codex-3.
 
 ## Verification
 

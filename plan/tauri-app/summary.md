@@ -26,15 +26,6 @@ guest and desktop code stay in Rust unchanged; the GUI only calls them.
 - Lint: `tsc` and strict type-aware oxlint (`--deny-warnings`). Generated shadcn primitives in
   `ui/src/components/ui` are vendored and not linted. No formatter.
 
-## Ownership
-
-- Lead agent (creative): theme, shell, every screen, custom components,
-  motion, WebGL and Lottie in `ui/src`, plus the browser mock data in
-  `ui/src/lib/mock.ts` (except `bindings.ts`).
-- Subagent (mechanical): Tauri in Rust, commands and events, bindings,
-  Rust fixtures, wiring the mock into tests, packaging and installer, `./ops`,
-  tests, removal of GPUI, docs.
-
 ## Steps
 
 1. Scaffold `ui/` with Luma and all components. Done.
@@ -56,5 +47,5 @@ guest and desktop code stay in Rust unchanged; the GUI only calls them.
    without a tray host and second-launch single-instance behavior.
    `./ops check` passed including package and installer fixtures.
 6. Removed GPUI views and `gpui-kit`; retained tray and instance logic under
-   `src/app/`. Updated README and AGENTS.md for the Rust/React ownership and
+   `src/app/`. Updated README and AGENTS.md for the Rust/React split and
    oxlint workflow.
