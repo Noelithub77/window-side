@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Cpu, Gpu, MemoryStick, Network } from "lucide-react
 import { AnimatePresence, motion } from "motion/react"
 import { Area, AreaChart, CartesianGrid, YAxis } from "recharts"
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart"
+import { Spinner } from "@/components/ui/spinner"
 import type { Sample } from "@/bindings"
 import { bytes } from "@/lib/format"
 import { useApp } from "@/lib/store"
@@ -109,7 +110,25 @@ function History({ vital, samples }: { vital: Vital; samples: Sample[] }) {
   )
 }
 
-export function Vitals() {
+/** Shown until the guest agent reports its first sample, usually while Windows boots. */
+function Waiting() {
+  return (
+    <div className="relative grid flex-1 place-items-center overflow-hidden">
+      <motion.span
+        aria-hidden
+        className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-mint/60 to-transparent"
+        animate={{ x: ["-60%", "60%"] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", repeatType: "mirror" }}
+      />
+      <span className="glass relative flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium text-muted-foreground ring-1 ring-border">
+        <Spinner className="size-3 text-mint" />
+        Waiting for Windows
+      </span>
+    </div>
+  )
+}
+
+export function Vitals({ waiting }: { waiting: boolean }) {
   const samples = useApp((state) => state.metrics.samples)
   const [vital, setVital] = useState<Vital>("cpu")
   const latest = samples.at(-1)
@@ -136,7 +155,7 @@ export function Vitals() {
         <NetworkTile latest={latest} active={vital === "network"} onSelect={pick("network")} />
       </div>
       <div className="glass sheen flex min-h-40 flex-1 flex-col overflow-hidden rounded-3xl pt-4 ring-1 ring-border">
-        <History vital={vital} samples={samples} />
+        {waiting || samples.length === 0 ? <Waiting /> : <History vital={vital} samples={samples} />}
       </div>
     </motion.section>
   )

@@ -92,8 +92,11 @@ function sample(step: number): Sample {
 let step = HISTORY
 let samples: Sample[] = Array.from({ length: HISTORY }, (_, index) => sample(index))
 
+// False while a freshly launched guest boots, before its agent answers.
+let agentReady = true
+
 function metrics(): Metrics {
-  const available = status.state === "running"
+  const available = status.state === "running" && agentReady
   return { available, samples: available ? samples : [] }
 }
 
@@ -165,7 +168,12 @@ async function run(action: Action): Promise<void> {
   await wait(900)
   switch (action.kind) {
     case "launch":
-      update({ state: "running", uptimeSeconds: 12, processes: 88 })
+      agentReady = false
+      update({ state: "running", uptimeSeconds: null, processes: null })
+      window.setTimeout(() => {
+        agentReady = true
+        update({ uptimeSeconds: 12, processes: 88 })
+      }, 4000)
       return
     case "stop":
     case "forceStop":

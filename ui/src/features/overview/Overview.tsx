@@ -1,5 +1,5 @@
 import { HardDriveDownload } from "lucide-react"
-import { AnimatePresence, LayoutGroup, motion } from "motion/react"
+import { AnimatePresence, LayoutGroup } from "motion/react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useApp } from "@/lib/store"
 import { LiveHero, RestHero } from "@/features/overview/Hero"
@@ -21,8 +21,7 @@ export function Overview() {
       )}
       <LayoutGroup>
         {live ? <LiveHero status={status} /> : <RestHero status={status} />}
-        <AnimatePresence>{live && available && <Vitals />}</AnimatePresence>
-        {live && !available && <motion.div layout className="flex-1" />}
+        <AnimatePresence>{live && <Vitals waiting={!available} />}</AnimatePresence>
       </LayoutGroup>
     </div>
   )
