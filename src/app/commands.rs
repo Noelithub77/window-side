@@ -85,6 +85,17 @@ pub async fn agent_prompt(state: Managed<'_, State>, agent: AgentId) -> Reply<St
     let _ = (state, agent);
     Ok(crate::agents::SETUP_PROMPT.into())
 }
+#[tauri::command]
+#[specta::specta]
+pub async fn launch_agent(state: Managed<'_, State>, agent: AgentId) -> Reply<()> {
+    if state.lock()?.fixture.is_some() { return Ok(()); }
+    let agent = match agent {
+        AgentId::Claude => crate::agents::Agent::Claude,
+        AgentId::Codex => crate::agents::Agent::Codex,
+        AgentId::Opencode => crate::agents::Agent::OpenCode,
+    };
+    tauri::async_runtime::spawn_blocking(move || crate::agents::launch(agent)).await.map_err(error)?.map_err(error)
+}
 // Internal subscription accounting; not product state or a public UI command.
 #[tauri::command]
 #[specta::specta]
@@ -94,7 +105,7 @@ pub fn subscriptions(state: Managed<'_, State>, count: u32) -> Reply<()> {
 }
 
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::new().typed_error_impl(ERROR_RUNTIME).commands(tauri_specta::collect_commands![shell, detect, plan, apply, status, metrics, run, save_credential, forget_credential, set_appearance, agent_prompt, subscriptions, copy_text, super::smoke::smoke_report]).typ::<bindings::Events>()
+    tauri_specta::Builder::new().typed_error_impl(ERROR_RUNTIME).commands(tauri_specta::collect_commands![shell, detect, plan, apply, status, metrics, run, save_credential, forget_credential, set_appearance, agent_prompt, launch_agent, subscriptions, copy_text, super::smoke::smoke_report]).typ::<bindings::Events>()
 }
 
 struct Operation(std::sync::Arc<std::sync::atomic::AtomicBool>);

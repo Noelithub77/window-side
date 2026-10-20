@@ -15,6 +15,7 @@ export const commands = {
 	forgetCredential: () => typedError<null>(__TAURI_INVOKE("forget_credential")),
 	setAppearance: (appearance: Appearance) => typedError<Shell>(__TAURI_INVOKE("set_appearance", { appearance })),
 	agentPrompt: (agent: AgentId) => typedError<string>(__TAURI_INVOKE("agent_prompt", { agent })),
+	launchAgent: (agent: AgentId) => typedError<null>(__TAURI_INVOKE("launch_agent", { agent })),
 	subscriptions: (count: number) => typedError<null>(__TAURI_INVOKE("subscriptions", { count })),
 	copyText: (text: string) => typedError<null>(__TAURI_INVOKE("copy_text", { text })),
 	smokeReport: (report: Report) => typedError<null>(__TAURI_INVOKE("smoke_report", { report })),

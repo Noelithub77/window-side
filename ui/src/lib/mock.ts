@@ -229,5 +229,6 @@ export const mock: Commands = {
     shell.appearance = appearance
     return Promise.resolve({ ...shell })
   },
+  launchAgent: () => Promise.resolve(),
   agentPrompt: (agent) => Promise.resolve(`Set up window-side with ${agent}: run \`ws setup --help\` first.`),
 }

@@ -28,6 +28,7 @@ const tauri: Commands = {
   forgetCredential: () => empty(commands.forgetCredential()),
   setAppearance: (appearance) => unwrap(commands.setAppearance(appearance)),
   agentPrompt: (agent) => unwrap(commands.agentPrompt(agent)),
+  launchAgent: (agent) => empty(commands.launchAgent(agent)),
 }
 export const api: Commands = native ? tauri : mock
 

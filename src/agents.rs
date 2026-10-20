@@ -1,7 +1,10 @@
-//! Installed coding agents and the read-only setup prompt copied by the UI.
-use crate::config::home;
+//! Local coding agents that can run setup from a prompt, opened in the user's terminal.
+use crate::config::{config_dir, home};
+use anyhow::{Context, Result};
 use std::env;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub const SETUP_PROMPT: &str = include_str!("../assets/agent-setup.md");
 
@@ -31,7 +34,13 @@ impl Agent {
         }
     }
 
-
+    /// Interactive session that starts from `prompt`.
+    fn args(self, prompt: &str) -> Vec<&str> {
+        match self {
+            Self::Claude | Self::Codex => vec![prompt],
+            Self::OpenCode => vec!["--prompt", prompt],
+        }
+    }
 }
 
 fn executable(path: &Path) -> bool {
@@ -54,4 +63,81 @@ fn find(program: &str) -> Option<PathBuf> {
 
 pub fn detect() -> Vec<Agent> {
     Agent::ALL.into_iter().filter(|agent| find(agent.program()).is_some()).collect()
+}
+
+/// Terminals and the arguments that come before the command they run.
+const TERMINALS: [(&str, &[&str]); 11] = [
+    ("xdg-terminal-exec", &[]),
+    ("konsole", &["-e"]),
+    ("ptyxis", &["--"]),
+    ("gnome-terminal", &["--"]),
+    ("kgx", &["--"]),
+    ("ghostty", &["-e"]),
+    ("alacritty", &["-e"]),
+    ("kitty", &[]),
+    ("foot", &[]),
+    ("wezterm", &["start", "--"]),
+    ("xterm", &["-e"]),
+];
+
+/// The desktop's own terminal first, after the standard `xdg-terminal-exec`.
+fn terminal() -> Option<(PathBuf, &'static [&'static str])> {
+    let desktop = env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_ascii_lowercase();
+    let native: &[&str] = if desktop.contains("kde") {
+        &["konsole"]
+    } else if desktop.contains("gnome") {
+        &["ptyxis", "gnome-terminal", "kgx"]
+    } else {
+        &[]
+    };
+    let ordered = TERMINALS.iter().filter(|(name, _)| *name == "xdg-terminal-exec").chain(
+        native.iter().filter_map(|name| TERMINALS.iter().find(|(known, _)| known == name)),
+    );
+    ordered
+        .chain(TERMINALS.iter())
+        .find_map(|(name, prefix)| find(name).map(|path| (path, *prefix)))
+}
+
+fn command(agent: Agent, program: &Path, terminal: &Path, prefix: &[&str]) -> Command {
+    let mut command = Command::new(terminal);
+    command.args(prefix).arg(program).args(agent.args(SETUP_PROMPT));
+    command
+}
+
+/// Opens `agent` in a terminal with the setup prompt; the session outlives the window.
+pub fn launch(agent: Agent) -> Result<()> {
+    let program = find(agent.program()).with_context(|| format!("{} is not installed", agent.name()))?;
+    let (terminal, prefix) = terminal().context("No terminal was found to open the agent in")?;
+    let directory = config_dir();
+    std::fs::create_dir_all(&directory)?;
+    let mut child = command(agent, &program, &terminal, prefix)
+        .current_dir(directory)
+        .process_group(0)
+        .spawn()
+        .with_context(|| format!("Could not open {}", agent.name()))?;
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_and_agent_arguments_preserve_the_exact_setup_prompt() {
+        let check = |agent, program: &str, terminal: &str, prefix: &[&str], expected: &[&str]| {
+            let command = command(agent, Path::new(program), Path::new(terminal), prefix);
+            assert_eq!(command.get_program(), terminal);
+            let arguments: Vec<_> = command.get_args().collect();
+            let expected: Vec<_> = expected.iter().map(std::ffi::OsStr::new).collect();
+            assert_eq!(arguments, expected);
+        };
+        check(Agent::Claude, "/bin/claude", "/bin/xdg-terminal-exec", &[], &["/bin/claude", SETUP_PROMPT]);
+        check(Agent::Codex, "/bin/codex", "/bin/konsole", &["-e"], &["-e", "/bin/codex", SETUP_PROMPT]);
+        check(Agent::OpenCode, "/bin/opencode", "/bin/ptyxis", &["--"], &["--", "/bin/opencode", "--prompt", SETUP_PROMPT]);
+        check(Agent::Claude, "/bin/claude", "/bin/wezterm", &["start", "--"], &["start", "--", "/bin/claude", SETUP_PROMPT]);
+        check(Agent::Codex, "/bin/codex", "/bin/kitty", &[], &["/bin/codex", SETUP_PROMPT]);
+        assert!(SETUP_PROMPT.contains("ws setup detect"));
+        assert!(SETUP_PROMPT.contains("Ask me before running `ws setup apply`"));
+    }
 }

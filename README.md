@@ -153,6 +153,12 @@ Selecting one copies [`assets/agent-setup.md`](assets/agent-setup.md) so it can
 be pasted into that agent. The command does not launch a terminal or agent.
 The prompt keeps the agent read-only until you approve `ws setup apply`.
 
+The native API also exposes `launch_agent(agent)` separately: it opens the
+chosen agent in `xdg-terminal-exec`, then falls back to desktop terminals,
+with the setup prompt as one argument and its own process group.
+`agent_prompt(agent)` only returns text. Browser mocks and native fixtures
+resolve agent launches without starting processes.
+
 ```sh
 ws --help
 ws status
