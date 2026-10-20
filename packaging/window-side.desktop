@@ -7,7 +7,7 @@ Terminal=false
 Type=Application
 Categories=System;Emulator;
 StartupNotify=true
-StartupWMClass=window-side
+StartupWMClass=ws
 Actions=Launch;Console;Stop;
 
 [Desktop Action Launch]

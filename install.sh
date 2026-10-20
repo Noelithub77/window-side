@@ -48,13 +48,27 @@ if [[ -z "$binary" ]]; then
   binary="$root/target/release/ws"
   if ! $dry_run; then
     command -v cargo >/dev/null || { echo 'Install Rust and the documented build tools first, or pass --binary' >&2; exit 1; }
-    (cd "$root"; cargo build --release --locked -j 2) >&2
+    command -v node >/dev/null && command -v pnpm >/dev/null || { echo 'Source builds require Node.js and pnpm. See scripts/system-deps.sh --build' >&2; exit 1; }
+    if ! pkg-config --exists webkit2gtk-4.1 gtk+-3.0; then
+      echo 'Missing build dependencies. Install with:' >&2
+      bash "$root/scripts/system-deps.sh" --build >&2
+      exit 1
+    fi
+    (cd "$root"; pnpm -C ui install --frozen-lockfile; pnpm -C ui build; cargo build --release --locked -j 2) >&2
   fi
 fi
 [[ "$binary" != *[$'\n\r\t']* ]] || { echo 'Binary path must not contain control characters' >&2; exit 2; }
 if [[ -e "$binary" ]]; then
   binary=$(realpath -- "$binary")
   [[ -f "$binary" && -x "$binary" ]] || { echo 'The binary must be an executable regular file' >&2; exit 1; }
+  if ldd "$binary" 2>/dev/null | grep -q 'not found'; then
+    if $dry_run; then
+      echo 'Missing runtime libraries. Install with:' >&2
+      bash "$root/scripts/system-deps.sh" --runtime >&2
+      exit 1
+    fi
+    bash "$root/scripts/system-deps.sh" --runtime --install >&2
+  fi
   version=$("$binary" --version)
   [[ "$version" =~ ^ws\ [0-9]+\.[0-9]+\.[0-9]+([-+][[:alnum:].-]+)?$ ]] || { echo 'The supplied executable is not a native ws build' >&2; exit 1; }
   digest=$(sha256sum -- "$binary"); digest=${digest%% *}

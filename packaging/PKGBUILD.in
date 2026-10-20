@@ -6,11 +6,11 @@ pkgdesc='Use your dual-boot Windows installation as a headless KVM guest'
 arch=('x86_64')
 url='https://github.com/Noelithub77/window-side'
 license=('MIT')
-depends=('glibc' 'gcc-libs' 'libxcb' 'libxkbcommon' 'libxkbcommon-x11' 'fontconfig'
+depends=('glibc' 'gcc-libs' 'webkit2gtk-4.1' 'gtk3' 'openssl'
          'wayland' 'vulkan-icd-loader' 'libvirt' 'qemu-base' 'swtpm' 'dnsmasq'
          'edk2-ovmf' 'virt-viewer' 'libsecret' 'libisoburn' 'libarchive' 'udisks2'
          'dosfstools' 'device-mapper' 'pciutils' 'polkit' 'curl' 'openssh')
-makedepends=('rust' 'clang' 'cmake' 'pkgconf' 'vulkan-headers')
+makedepends=('rust' 'base-devel' 'pkgconf' 'nodejs' 'pnpm')
 checkdepends=('jq' 'ripgrep' 'desktop-file-utils')
 optdepends=('looking-glass: GPU passthrough viewer; the IDD requires the matching client build'
             'hyprland: focus the existing Windows viewer')
@@ -22,10 +22,12 @@ sha256sums=('@SHA256@')
 prepare() {
   cd "$pkgname-$pkgver"
   cargo fetch --locked --target x86_64-unknown-linux-gnu
+  pnpm -C ui install --frozen-lockfile
 }
 
 build() {
   cd "$pkgname-$pkgver"
+  pnpm -C ui build
   cargo build --release --frozen -j 2
 }
 
