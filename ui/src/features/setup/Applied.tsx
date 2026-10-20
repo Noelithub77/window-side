@@ -1,6 +1,11 @@
 import { motion } from "motion/react"
+import { DotLottie } from "@lottiefiles/dotlottie-web"
 import { Lottie } from "@/components/app/Lottie"
 import applied from "@/assets/lottie/applied.json"
+
+export function prepareApplied(): Promise<void> {
+  return DotLottie.preload()
+}
 
 /** Full-page moment after setup is applied, before first boot takes over. */
 export function Applied() {

@@ -18,9 +18,9 @@ type Props = {
 export function Panel({ children, delay = 0, title, icon, color, aside, className }: Props) {
   return (
     <motion.section
-      initial={{ opacity: 0, y: 14 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, type: "spring", stiffness: 200, damping: 24 }}
+      transition={{ delay, duration: 0.2, ease: "easeOut" }}
       className={cn("glass sheen flex flex-col gap-5 rounded-3xl p-6 ring-1 ring-border", className)}
     >
       {title && (

@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useShallow } from "zustand/react/shallow"
 import NumberFlow from "@number-flow/react"
 import { CircleCheck, Cpu, Download, Gpu, HardDrive, type LucideIcon, MemoryStick, MonitorPlay, MonitorSmartphone, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { IconTile } from "@/components/app/IconTile"
@@ -7,7 +8,7 @@ import { WindowsMark } from "@/components/app/WindowsMark"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import type { Status, VmSummary } from "@/bindings"
+import type { VmSummary } from "@/bindings"
 import { gib } from "@/lib/format"
 import { useApp } from "@/lib/store"
 import { Appearance } from "@/features/settings/Appearance"
@@ -56,11 +57,10 @@ const RESOLUTIONS = [
   { id: "2160", label: "4K", width: 3840, height: 2160 },
 ]
 
-function Display({ status, delay }: { status: Status; delay: number }) {
+function Display({ running, gpu, delay }: { running: boolean; gpu: boolean; delay: number }) {
   const run = useApp((state) => state.run)
   const busy = useApp((state) => state.busy)
   const [picked, setPicked] = useState("")
-  const running = status.state === "running"
   return (
     <Panel title="Display" icon={MonitorSmartphone} color="var(--sky)" delay={delay}>
       <ToggleGroup
@@ -83,7 +83,7 @@ function Display({ status, delay }: { status: Status; delay: number }) {
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
-      {status.vm?.gpu && (
+      {gpu && (
         <div className="flex items-center gap-3 rounded-2xl bg-foreground/4 py-2 pr-2 pl-4">
           <MonitorPlay className="size-4 text-muted-foreground" />
           <span className="text-sm">Looking Glass</span>
@@ -97,24 +97,23 @@ function Display({ status, delay }: { status: Status; delay: number }) {
   )
 }
 
-function Updates({ status, delay }: { status: Status; delay: number }) {
+function Updates({ running, pending, delay }: { running: boolean; pending: number | null; delay: number }) {
   const run = useApp((state) => state.run)
   const busy = useApp((state) => state.busy)
-  const pending = status.pendingUpdates ?? 0
-  const running = status.state === "running"
+  const count = pending ?? 0
   return (
     <Panel title="Windows Update" icon={Download} color="var(--peach)" delay={delay}>
       <div className="flex items-center gap-4">
-        {pending > 0 ? (
+        {count > 0 ? (
           <div className="flex items-baseline gap-2 font-heading">
-            <NumberFlow value={pending} className="text-4xl font-semibold text-peach tabular" />
+            <NumberFlow value={count} className="text-4xl font-semibold text-peach tabular" />
             <Download className="size-4 text-muted-foreground" aria-label="waiting" />
           </div>
         ) : (
-          <CircleCheck className={status.pendingUpdates === 0 ? "size-7 text-mint" : "size-7 text-muted-foreground/40"} aria-label={status.pendingUpdates === 0 ? "Up to date" : "Not checked"} />
+          <CircleCheck className={pending === 0 ? "size-7 text-mint" : "size-7 text-muted-foreground/40"} aria-label={pending === 0 ? "Up to date" : "Not checked"} />
         )}
         <div className="flex-1" />
-        {pending > 0 ? (
+        {count > 0 ? (
           <Button className="rounded-full" disabled={!running || busy !== null} onClick={() => void run("Installing updates", { kind: "updatesInstall" })}>
             <Download />
             Install
@@ -131,20 +130,22 @@ function Updates({ status, delay }: { status: Status; delay: number }) {
 }
 
 export function Settings() {
-  const status = useApp((state) => state.status)
+  const vm = useApp(useShallow((state) => state.status?.vm ?? null))
+  const running = useApp((state) => state.status?.state === "running")
+  const pending = useApp((state) => state.status?.pendingUpdates ?? null)
+  const credentialSaved = useApp((state) => state.status?.credentialSaved ?? null)
   const shell = useApp((state) => state.shell)
-  if (!status) return null
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="mx-auto grid w-full max-w-5xl grid-cols-2 items-start gap-4 px-8 pt-2 pb-10">
         <div className="flex flex-col gap-4">
-          {status.vm && <Machine vm={status.vm} />}
-          <Display status={status} delay={0.06} />
-          <Updates status={status} delay={0.12} />
+          {vm && <Machine vm={vm} />}
+          <Display running={running} gpu={Boolean(vm?.gpu)} delay={0.03} />
+          <Updates running={running} pending={pending} delay={0.06} />
         </div>
         <div className="flex flex-col gap-4">
-          {status.credentialSaved !== null && <SignIn saved={status.credentialSaved} delay={0.04} />}
-          {shell && <Appearance shell={shell} delay={0.1} />}
+          {credentialSaved !== null && <SignIn saved={credentialSaved} delay={0.02} />}
+          {shell && <Appearance shell={shell} delay={0.05} />}
           {shell && (
             <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground/70 tabular">
               <WindowsMark size={12} />

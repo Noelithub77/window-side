@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test"
 
 test("welcome guides setup through review and apply", async ({ page }) => {
+  const animationRequests: string[] = []
+  page.on("request", (request) => {
+    if (request.url().endsWith(".wasm")) animationRequests.push(request.url())
+  })
   await page.goto("/?fixture=setup")
   await expect(page.getByRole("heading", { name: "Windows, right beside Linux" })).toBeVisible()
   await page.getByRole("button", { name: "Get started" }).click()
@@ -9,8 +13,10 @@ test("welcome guides setup through review and apply", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Graphics", exact: true })).toBeVisible()
   await page.getByRole("button", { name: "Continue", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Resources", exact: true })).toBeVisible()
+  expect(animationRequests).toHaveLength(0)
   await page.locator("footer").getByRole("button", { name: "Review", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible()
+  await expect.poll(() => animationRequests.length).toBe(1)
   await page.getByRole("button", { name: "Apply", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Start Windows", exact: true })).toBeVisible({ timeout: 10000 })
   await page.getByRole("button", { name: "Start", exact: true }).click()

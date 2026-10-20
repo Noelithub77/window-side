@@ -135,7 +135,8 @@ function AgentMenu() {
 }
 
 export function Welcome() {
-  const { detect, start } = useApp()
+  const detect = useApp((state) => state.detect)
+  const start = useApp((state) => state.start)
   useEffect(() => {
     void detect()
   }, [detect])

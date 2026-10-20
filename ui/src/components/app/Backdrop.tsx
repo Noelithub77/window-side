@@ -93,9 +93,11 @@ type Props = { mood: Mood; tint?: Rgb | null }
 export function Backdrop({ mood, tint = null }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const target = useRef({ mood, tint })
+  const redraw = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     target.current = { mood, tint }
+    redraw.current?.()
   }, [mood, tint])
 
   useEffect(() => {
@@ -104,10 +106,11 @@ export function Backdrop({ mood, tint = null }: Props) {
     const app = new Application()
     let ready = false
     let disposed = false
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    let cleanup: (() => void) | undefined
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)")
 
     void app
-      .init({ resizeTo: element, preference: "webgl", antialias: false, resolution: 0.5, autoDensity: true, backgroundAlpha: 1 })
+      .init({ resizeTo: element, preference: "webgl", antialias: false, resolution: 0.5, autoDensity: true, backgroundAlpha: 1, autoStart: false })
       .then(() => {
         if (disposed) {
           app.destroy(true)
@@ -131,12 +134,12 @@ export function Backdrop({ mood, tint = null }: Props) {
         app.stage.addChild(surface)
         const uniforms = aurora.uniforms
         app.ticker.maxFPS = 30
-        app.ticker.add((ticker) => {
+        const update = (deltaMS: number) => {
           surface.width = app.screen.width
           surface.height = app.screen.height
           uniforms.uAspect = app.screen.width / Math.max(1, app.screen.height)
           const goal = MOODS[target.current.mood]
-          const ease = Math.min(1, ticker.deltaMS / 900)
+          const ease = Math.min(1, deltaMS / 900)
           uniforms.uEnergy += (goal.energy - uniforms.uEnergy) * ease
           const colors = [uniforms.uA, uniforms.uB, uniforms.uC]
           colors.forEach((color, slot) => {
@@ -147,8 +150,34 @@ export function Backdrop({ mood, tint = null }: Props) {
               color[channel] = current + ((wanted[channel] ?? 0) - current) * ease
             }
           })
-          if (!still) uniforms.uTime += ticker.deltaMS / 1000
-        })
+          if (!reduced.matches) uniforms.uTime += deltaMS / 1000
+        }
+        app.ticker.add((ticker) => { update(ticker.deltaMS) })
+        const sync = () => {
+          if (document.hidden) {
+            app.stop()
+            return
+          }
+          if (reduced.matches) {
+            app.stop()
+            app.resize()
+            update(900)
+            app.render()
+          } else {
+            app.start()
+          }
+        }
+        const resize = new ResizeObserver(sync)
+        resize.observe(element)
+        redraw.current = sync
+        document.addEventListener("visibilitychange", sync)
+        reduced.addEventListener("change", sync)
+        cleanup = () => {
+          resize.disconnect()
+          document.removeEventListener("visibilitychange", sync)
+          reduced.removeEventListener("change", sync)
+        }
+        sync()
       })
       .catch(() => {
         element.dataset.fallback = "true"
@@ -156,6 +185,8 @@ export function Backdrop({ mood, tint = null }: Props) {
 
     return () => {
       disposed = true
+      redraw.current = null
+      cleanup?.()
       if (ready) app.destroy(true)
     }
   }, [])

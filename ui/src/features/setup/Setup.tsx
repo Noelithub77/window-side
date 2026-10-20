@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useState } from "react"
 import { ArrowLeft, ArrowRight, ClipboardCheck, Cpu, Gpu, HardDrive, MemoryStick, RefreshCw, ShieldCheck } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
@@ -12,7 +12,6 @@ import { api, message } from "@/lib/api"
 import type { Choices, Plan } from "@/bindings"
 import { gib } from "@/lib/format"
 import { useApp } from "@/lib/store"
-import { Applied } from "@/features/setup/Applied"
 import { GraphicsStep } from "@/features/setup/GraphicsStep"
 import { ResourcesStep } from "@/features/setup/ResourcesStep"
 import { ReviewStep } from "@/features/setup/ReviewStep"
@@ -41,8 +40,16 @@ function Detecting() {
   )
 }
 
+const loadApplied = () => import("@/features/setup/Applied")
+const Applied = lazy(() => loadApplied().then((module) => ({ default: module.Applied })))
+
 export function Setup() {
-  const { detection, detecting, detect, status, edit, refresh } = useApp()
+  const detection = useApp((state) => state.detection)
+  const detecting = useApp((state) => state.detecting)
+  const detect = useApp((state) => state.detect)
+  const status = useApp((state) => state.status)
+  const edit = useApp((state) => state.edit)
+  const refresh = useApp((state) => state.refresh)
   const [step, setStep] = useState(0)
   const [direction, setDirection] = useState(1)
   const [edited, setEdited] = useState<Choices | null>(null)
@@ -56,6 +63,14 @@ export function Setup() {
   useEffect(() => {
     void detect()
   }, [detect])
+
+  useEffect(() => {
+    if (step === LAST) {
+      void loadApplied().then((module) => module.prepareApplied()).catch((error: unknown) => {
+        console.warn("Could not prepare the setup animation", message(error))
+      })
+    }
+  }, [step])
 
   const go = useCallback(
     (next: number) => {
@@ -208,7 +223,9 @@ export function Setup() {
           </GlowButton>
         </footer>
       </section>
-      <AnimatePresence>{applied && <Applied />}</AnimatePresence>
+      <Suspense fallback={null}>
+        <AnimatePresence>{applied && <Applied />}</AnimatePresence>
+      </Suspense>
     </div>
   )
 }
