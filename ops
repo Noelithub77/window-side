@@ -18,6 +18,7 @@ Usage: ./ops <command>
   build                 Build the native ws binary with the existing Cargo cache
   dev                   Build and replace this checkout's development app
   gui:test --output DIR Check onboarding, setup, overview and settings in OmaBox
+  gui:tray --output DIR  Check tray, window close/reopen and single-instance behavior in OmaBox
   gui:installed --binary FILE --output DIR  Open an installed binary in a fresh OmaBox HOME
 
 The GUI test uses synthetic hardware in a fresh HOME, no guest disk or credentials.
@@ -50,6 +51,7 @@ HELP
   build) exec cargo build -j 2 ;;
   dev) shift; exec "$root/scripts/dev.sh" "$@" ;;
   gui:test) shift; exec "$root/scripts/gui-test.sh" "$@" ;;
+  gui:tray) shift; exec bash "$root/scripts/tray-test.sh" "$@" ;;
   gui:installed) shift; exec "$root/scripts/installed-gui-test.sh" "$@" ;;
   *) echo 'Use ./ops --help' >&2; exit 2 ;;
 esac
