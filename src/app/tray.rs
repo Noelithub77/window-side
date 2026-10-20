@@ -1,5 +1,13 @@
 //! Status-bar tray: Windows' state, start, open and shut down, the window and quit.
-fn state_label(state: &str) -> &str { match state { "running" => "Running", "shut off" => "Stopped", "paused" => "Paused", "in shutdown" => "Stopping", _ => "Unavailable" } }
+fn state_label(state: &str) -> &str {
+    match state {
+        "running" => "Running",
+        "shut off" => "Stopped",
+        "paused" => "Paused",
+        "in shutdown" => "Stopping",
+        _ => "Unavailable",
+    }
+}
 use crate::cli::Action;
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::StandardItem;
@@ -50,7 +58,11 @@ impl Tray for WindowSideTray {
     }
 
     fn tool_tip(&self) -> ToolTip {
-        ToolTip { title: "window-side".into(), description: format!("Windows · {}", state_label(&self.status)), ..Default::default() }
+        ToolTip {
+            title: "window-side".into(),
+            description: format!("Windows · {}", state_label(&self.status)),
+            ..Default::default()
+        }
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
@@ -59,14 +71,24 @@ impl Tray for WindowSideTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let running = self.status == "running";
-        let header = StandardItem { label: format!("Windows · {}", state_label(&self.status)), enabled: false, ..Default::default() };
+        let header = StandardItem {
+            label: format!("Windows · {}", state_label(&self.status)),
+            enabled: false,
+            ..Default::default()
+        };
         let mut items = vec![header.into(), MenuItem::Separator];
         if running {
-            items.push(Self::item("Open Windows", true, || Command::Run("Opening Windows", Action::Console)));
-            items.push(Self::item("Shut down", true, || Command::Run("Shutting down", Action::Stop)));
+            items.push(Self::item("Open Windows", true, || {
+                Command::Run("Opening Windows", Action::Console)
+            }));
+            items.push(Self::item("Shut down", true, || {
+                Command::Run("Shutting down", Action::Stop)
+            }));
         } else {
             let startable = self.configured && self.status == "shut off";
-            items.push(Self::item("Start Windows", startable, || Command::Run("Starting Windows", Action::Launch)));
+            items.push(Self::item("Start Windows", startable, || {
+                Command::Run("Starting Windows", Action::Launch)
+            }));
         }
         items.extend([
             MenuItem::Separator,
@@ -105,7 +127,12 @@ impl TrayHandle {
 /// `None` when no bar hosts tray items, such as GNOME without the AppIndicator extension.
 pub(super) fn start(sender: Sender<Command>) -> Option<TrayHandle> {
     let online = Arc::new(AtomicBool::new(true));
-    let tray = WindowSideTray { status: String::new(), configured: false, sender, online: online.clone() };
+    let tray = WindowSideTray {
+        status: String::new(),
+        configured: false,
+        sender,
+        online: online.clone(),
+    };
     match tray.spawn() {
         Ok(handle) => Some(TrayHandle { handle, online }),
         Err(ksni::Error::Dbus(error)) => {

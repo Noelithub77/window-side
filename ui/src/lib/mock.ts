@@ -1,5 +1,5 @@
 // Synthetic hardware for the browser preview and UI tests. Pick a scenario
-// with `?fixture=setup|status|stopped|first-boot-start|first-boot-ready`.
+// with `?fixture=setup|status|stopped|first-boot-start|first-boot-ready|unavailable`.
 import type {
   Action,
   Commands,
@@ -19,6 +19,7 @@ const shell: Shell = {
   version: "0.4.0",
   fixture: true,
   omarchy: true,
+  panelInstalled: false,
   appearance: "pastel",
   palette: {
     background: "#1a1b26",
@@ -60,14 +61,15 @@ const detection: Detection = {
 
 const vm = { name: "window-side", memoryMib: 16384, vcpus: 10, gpu: "0000:01:00.0", diskMode: "whole" as const }
 
-const setupStatus: Status = { configured: false, vm: null, state: "unavailable", bootProfile: "gpu", storageError: null, pendingUpdates: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: null }
+const setupStatus: Status = { configured: false, vm: null, state: "unavailable", unavailableReason: "Windows is not configured", bootProfile: "gpu", storageError: null, pendingUpdates: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: null }
 
 const statuses: Record<string, Status> = {
   setup: setupStatus,
-  status: { configured: true, vm, state: "running", bootProfile: "gpu", storageError: null, pendingUpdates: 2, uptimeSeconds: 3349, processes: 142, credentialSaved: false, firstBoot: null },
-  stopped: { configured: true, vm, state: "stopped", bootProfile: "normal", storageError: null, pendingUpdates: null, uptimeSeconds: null, processes: null, credentialSaved: true, firstBoot: null },
-  "first-boot-start": { configured: true, vm, state: "stopped", bootProfile: "gpu", storageError: null, pendingUpdates: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: { stage: "start", storageReady: null, networkReady: null } },
-  "first-boot-ready": { configured: true, vm, state: "running", bootProfile: "gpu", storageError: null, pendingUpdates: null, uptimeSeconds: 420, processes: 96, credentialSaved: null, firstBoot: { stage: "ready", storageReady: true, networkReady: true } },
+  unavailable: { ...setupStatus, configured: true, vm, unavailableReason: "libvirt is not running" },
+  status: { configured: true, vm, state: "running", unavailableReason: null, bootProfile: "gpu", storageError: null, pendingUpdates: 2, uptimeSeconds: 3349, processes: 142, credentialSaved: false, firstBoot: null },
+  stopped: { configured: true, vm, state: "stopped", unavailableReason: null, bootProfile: "normal", storageError: null, pendingUpdates: null, uptimeSeconds: null, processes: null, credentialSaved: true, firstBoot: null },
+  "first-boot-start": { configured: true, vm, state: "stopped", unavailableReason: null, bootProfile: "gpu", storageError: null, pendingUpdates: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: { stage: "start", storageReady: null, networkReady: null } },
+  "first-boot-ready": { configured: true, vm, state: "running", unavailableReason: null, bootProfile: "gpu", storageError: null, pendingUpdates: null, uptimeSeconds: 420, processes: 96, credentialSaved: null, firstBoot: { stage: "ready", storageReady: true, networkReady: true } },
 }
 
 let status: Status = structuredClone(statuses[scenario] ?? setupStatus)
@@ -128,17 +130,12 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function update(next: Partial<Status>) {
   status = { ...status, ...next }
+  if (status.state !== "unavailable") status.unavailableReason = null
   emitStatus()
   emitMetrics()
 }
 
-const plan: Plan = {
-  facts: [
-    { label: "Windows", value: "Samsung 990 Pro · whole drive" },
-    { label: "Graphics", value: "RTX 4060 in the GPU profile" },
-    { label: "Memory", value: "16 GiB" },
-    { label: "Processor", value: "10 threads on performance cores" },
-  ],
+const plan: Omit<Plan, "facts"> = {
   notes: ["Linux keeps the Intel GPU for its own screen.", "A GPU boot entry is added to Limine."],
   packages: [],
   groups: ["libvirt", "kvm"],
@@ -197,7 +194,9 @@ async function run(action: Action): Promise<void> {
     case "lookingGlassSetup":
     case "updatesCheck":
     case "signIn":
+      return
     case "installPlugin":
+      shell.panelInstalled = true
       return
   }
 }
@@ -205,9 +204,20 @@ async function run(action: Action): Promise<void> {
 export const mock: Commands = {
   shell: () => Promise.resolve(shell),
   detect: () => Promise.resolve({ ...detection, configured: status.configured }),
-  plan: async () => {
+  plan: async (choices) => {
     await wait(500)
-    return plan
+    const install = detection.windows.find((item) => item.partition === choices.windows)
+    if (!install) throw new Error("Choose a detected Windows install")
+    const gpu = choices.gpu === null ? null : detection.gpus.find((item) => item.address === choices.gpu && item.usable)
+    if (choices.gpu !== null && !gpu) throw new Error("That GPU cannot be passed through")
+    const number = install.partition.match(/\d+$/)?.[0]
+    const mode = install.dedicatedDrive ? "whole drive" : `partition${number ? ` ${number}` : ""}`
+    return { ...plan, facts: [
+      { label: "Windows", value: `${install.diskModel || install.partition} · ${mode}` },
+      { label: "Graphics", value: gpu?.name ?? "Virtual display" },
+      { label: "Memory", value: `${choices.memoryMib / 1024} GiB` },
+      { label: "Processor", value: `${choices.vcpus} threads` },
+    ] }
   },
   apply: async () => {
     await wait(1400)

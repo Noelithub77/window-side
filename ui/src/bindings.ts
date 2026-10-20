@@ -146,6 +146,7 @@ export type Sample = {
 };
 
 export type Shell = {
+	panelInstalled: boolean,
 	version: string,
 	fixture: boolean,
 	omarchy: boolean,
@@ -155,6 +156,7 @@ export type Shell = {
 };
 
 export type Status = {
+	unavailableReason: string | null,
 	configured: boolean,
 	vm: VmSummary | null,
 	state: VmState,

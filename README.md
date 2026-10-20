@@ -218,8 +218,9 @@ frontend dependencies and build the UI before Cargo embeds it.
 
 CLI fixtures fake libvirt and the guest agent. Browser interaction tests use
 synthetic mocks. Native fixture modes are `setup`, `status`, `stopped`,
-`first-boot-start` and `first-boot-ready` through `WS_GUI_FIXTURE`; they keep
-all command effects in memory, without VM, setup or keyring access.
+`first-boot-start`, `first-boot-ready` and `unavailable` through
+`WS_GUI_FIXTURE`; they keep all command effects in memory, without VM, setup
+or keyring access.
 `gui:smoke` creates an invisible OmaBox, checks the real WebKitGTK canvas and
 bundled Lottie renderer and clipboard fallback, and saves a screenshot and
 JSON evidence.

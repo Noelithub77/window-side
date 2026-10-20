@@ -1,4 +1,5 @@
 mod backend;
+mod errors;
 mod bindings;
 mod commands;
 mod fixture;

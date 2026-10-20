@@ -4,18 +4,34 @@ use specta::Type;
 
 #[derive(Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct Report { webgl: bool, lottie: bool, clipboard: bool, title: String, errors: Vec<String> }
+pub struct Report {
+    webgl: bool,
+    lottie: bool,
+    clipboard: bool,
+    title: String,
+    errors: Vec<String>,
+}
 #[tauri::command]
 #[specta::specta]
 pub fn smoke_report(state: tauri::State<'_, super::State>, report: Report) -> Result<(), String> {
-    if state.lock()?.fixture.is_none() { return Err("Rendering probes require a fixture".into()); }
+    if state.lock()?.fixture.is_none() {
+        return Err("Rendering probes require a fixture".into());
+    }
     let path = std::env::var("WS_GUI_SMOKE_OUTPUT").map_err(|_| "No rendering probe requested")?;
-    std::fs::write(path, serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 pub fn start(app: &tauri::AppHandle) {
-    if std::env::var_os("WS_GUI_SMOKE_OUTPUT").is_none() { return; }
-    let Some(window) = app.get_webview_window("main") else { return };
+    if std::env::var_os("WS_GUI_SMOKE_OUTPUT").is_none() {
+        return;
+    }
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
     let script = r#"
 (async () => {
   const errors = [];
@@ -43,6 +59,8 @@ pub fn start(app: &tauri::AppHandle) {
   await window.__TAURI_INTERNALS__.invoke('smoke_report', { report: { webgl, lottie, clipboard, title: document.title, errors } });
 })();
 "#;
-    if let Err(e) = window.eval(script) { eprintln!("window-side rendering probe: {e}"); }
+    if let Err(e) = window.eval(script) {
+        eprintln!("window-side rendering probe: {e}");
+    }
 }
 use tauri::Manager;

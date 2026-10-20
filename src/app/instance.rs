@@ -21,8 +21,14 @@ impl Instance {
 /// The connection that owns the session name, or `None` after asking the running app to show itself.
 pub(super) fn claim(sender: Sender<Command>) -> Result<Option<Connection>> {
     // zbus requests names with replacement on by default; a second launch must not take over.
-    let builder = Builder::session()?.serve_at(PATH, Instance { sender })?.name(NAME)?;
-    match builder.allow_name_replacements(false).replace_existing_names(false).build() {
+    let builder = Builder::session()?
+        .serve_at(PATH, Instance { sender })?
+        .name(NAME)?;
+    match builder
+        .allow_name_replacements(false)
+        .replace_existing_names(false)
+        .build()
+    {
         Ok(connection) => Ok(Some(connection)),
         Err(zbus::Error::NameTaken) => {
             let connection = Connection::session()?;
