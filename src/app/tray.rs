@@ -1,5 +1,5 @@
 //! Status-bar tray: Windows' state, start, open and shut down, the window and quit.
-use super::model::state_label;
+fn state_label(state: &str) -> &str { match state { "running" => "Running", "shut off" => "Stopped", "paused" => "Paused", "in shutdown" => "Stopping", _ => "Unavailable" } }
 use crate::cli::Action;
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::StandardItem;

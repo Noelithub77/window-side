@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "window-side",
+  "version": "0.1.0",
+  "identifier": "window-side",
+  "build": { "frontendDist": "ui/dist", "devUrl": "http://localhost:5199", "beforeDevCommand": "pnpm -C ui dev", "beforeBuildCommand": "pnpm -C ui build" },
+  "app": { "windows": [{ "label": "main", "title": "window-side", "width": 1180, "height": 800, "minWidth": 1040, "minHeight": 720, "decorations": false, "transparent": false }], "security": { "csp": null } },
+  "bundle": { "active": false }
+}

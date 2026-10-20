@@ -89,7 +89,8 @@ fn sample(domain: &str) -> Option<Snapshot> {
     let cache = runtime_dir().join("guest.json");
     if let Some(cached) = fs::read_to_string(&cache).ok().and_then(|text| serde_json::from_str::<Snapshot>(&text).ok()) {
         let age = now() - cached.sampled_at;
-        if cached.is_valid() && (0.0..CACHE_SECONDS).contains(&age) {
+        let cache_seconds = std::env::var("WS_METRICS_CACHE_SECONDS").ok().and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite() && *v >= 2.0).unwrap_or(CACHE_SECONDS);
+        if cached.is_valid() && (0.0..cache_seconds).contains(&age) {
             return Some(cached);
         }
     }

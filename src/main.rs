@@ -7,7 +7,7 @@ mod detect;
 mod display;
 mod first_boot;
 mod guest;
-mod gui;
+mod app;
 mod host;
 mod notify;
 mod process;
@@ -20,7 +20,7 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let cli::Cli { command } = cli::Cli::parse();
     let Some(action) = command else {
-        return if gui::run() {
+        return if app::run() {
             ExitCode::SUCCESS
         } else {
             ExitCode::FAILURE
