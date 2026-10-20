@@ -4,25 +4,19 @@ import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import Lenis from "lenis";
-import { build as boot } from "./scenes/boot.ts";
-import { build as disk } from "./scenes/disk.ts";
-import { build as display } from "./scenes/display.ts";
-import type { Build, Scene } from "./scenes/motion.ts";
-import { build as name } from "./scenes/name.ts";
-import { build as profile } from "./scenes/profile.ts";
+import { build as gpu } from "./scenes/gpu.ts";
+import type { Build } from "./scenes/motion.ts";
+import { build as signin } from "./scenes/signin.ts";
 import { build as wall } from "./scenes/wall.ts";
 import { startPrompt, startTerminal, type Transcript } from "./terminal.ts";
 
 gsap.registerPlugin(ScrollTrigger, SplitText, DrawSVGPlugin);
 
 const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const scenes = new Map<string, Scene>();
 // Every scene is built before ScrollTrigger measures, so pins and starts see final heights.
-const builders: Record<string, Build> = { wall, name, disk, boot, display, profile };
+const builders: Record<string, Build> = { wall, gpu, signin };
 // Story scenes follow the scroll; the rest play once they come into view.
-const scrubbed = new Set(["wall", "name"]);
-// The value each control starts on, so a rebuilt scene matches its buttons.
-const chosen = new Map<string, string>();
+const scrubbed = new Set(["wall"]);
 
 if (!calm) {
   const lenis = new Lenis({ autoRaf: false, anchors: true });
@@ -90,9 +84,6 @@ function mount(element: Element, narrow: boolean, pin: boolean) {
   const build = builders[key];
   if (!svg || !build) return;
   const scene = build(svg, narrow);
-  scenes.set(key, scene);
-  const value = chosen.get(key);
-  if (value) scene.act?.(value);
   let inView = false;
   let finished = false;
 
@@ -133,35 +124,17 @@ function mount(element: Element, narrow: boolean, pin: boolean) {
   } else if (pin && section) {
     ScrollTrigger.create({ trigger: section.querySelector(".wrap") ?? section, start: "center center", end: "+=160%", pin: true, onUpdate: (self) => scrub(self.progress) });
   } else {
-    ScrollTrigger.create({ trigger: element, start: "top 85%", end: key === "name" ? "center 40%" : "bottom 60%", onUpdate: (self) => scrub(self.progress) });
+    ScrollTrigger.create({ trigger: element, start: "top 85%", end: "bottom 60%", onUpdate: (self) => scrub(self.progress) });
   }
-}
-
-for (const tab of document.querySelectorAll<HTMLElement>('[data-act][aria-selected="true"]')) {
-  if (tab.dataset.act && tab.dataset.value) chosen.set(tab.dataset.act, tab.dataset.value);
 }
 
 const media = gsap.matchMedia();
 media.add({ narrow: "(max-width: 760px)", tall: "(min-height: 700px)" }, (context) => {
   const narrow = context.conditions?.narrow ?? false;
   const tall = context.conditions?.tall ?? false;
-  scenes.clear();
   for (const element of document.querySelectorAll("[data-scene]")) {
     mount(element, narrow, !narrow && tall && Boolean(element.closest("[data-pin-section]")));
   }
-});
-
-// Controls under the scenes: tabs keep one selected, buttons just act.
-document.addEventListener("click", (event) => {
-  const control = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-act]") : null;
-  const key = control?.dataset.act;
-  const value = control?.dataset.value;
-  if (!control || !key || !value) return;
-  if (control.getAttribute("role") === "tab") {
-    for (const tab of document.querySelectorAll(`[data-act="${key}"]`)) tab.setAttribute("aria-selected", String(tab === control));
-    chosen.set(key, value);
-  }
-  scenes.get(key)?.act?.(value);
 });
 
 // A soft spotlight follows the pointer across cards.

@@ -17,8 +17,11 @@ recordings, and a light WebGL hero.
   (`site/scripts/record-native.sh`) and CLI transcripts (`site/src/data/cli.json`).
   Real Windows through Looking Glass is captured last, because the VM is
   memory-heavy.
-- Type and colour follow the app: Bricolage Grotesque headings, Inter body,
-  Excalifont scenes, mint and lavender pastels on ink.
+- **[chosen]** Nunito (variable, Latin subset) for all text, Excalifont for
+  scenes, mint and lavender pastels on ink.
+- **[chosen]** Lead with what people use: the app, GPU passthrough, automatic
+  sign-in and SSH for agents. Install mechanics (disk sharing, first boot,
+  boot profiles) live in the docs, not on the page.
 
 ## Loading
 
@@ -28,12 +31,12 @@ idle with motion, scenes and the shader. Reduced motion shows final frames.
 
 ## Sections
 
-Why (dual boot is a wall) · the name · one drive, two ways in · setup ·
-first boot · display · boot profiles · overview · agents · supported hosts · get.
+Why (dual boot is a wall) · the app (overview and setup recordings, settings,
+tray, Omarchy panel) · GPU passthrough · sign-in · SSH and agents · your Linux · get.
 
 ## Status
 
 Deployed. Desktop (1440) and phone (390) layouts checked in headless Chromium.
-Still to do: replace the derived `start`, `metrics`, `exec`, `ssh` and
-`updates` transcripts with real output, and capture real Windows through
+Still to do: replace the derived `metrics`, `exec`, `ssh` and `updates`
+transcripts with real output, and capture real Windows through
 Looking Glass, both from a running VM.

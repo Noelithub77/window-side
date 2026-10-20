@@ -22,15 +22,16 @@ The installer verifies the release checksum, installs the app and any missing VM
 
 ## How it works
 
-- **Same install, second door.** KVM boots your existing Windows. A drive of its own is passed whole; a drive shared with Linux exposes only the Windows partition.
-- **Look first, approve once.** Guided setup detects storage, graphics and CPU, shows every file it will write, then asks for your password once.
-- **Familiar first boot.** Windows starts on hardware it already knows, installs its drivers, then moves to fast VirtIO. A failed switch rolls back.
-- **Three ways to look.** Headless for agents, a console, or a passed-through GPU shown through [Looking Glass](https://looking-glass.io/).
-- **Built for agents.** Every `ws` command prints JSON: start Windows, run PowerShell, copy files, use SSH.
+- **One calm window.** Start, open and stop Windows from the app or the tray, with live CPU, memory, GPU and network.
+- **Your real GPU.** Pass your graphics card to Windows for near-native speed, shown in a Linux window through [Looking Glass](https://looking-glass.io/). A normal boot gives the card back to Linux.
+- **Signed in for you.** Your Windows password stays in the Linux keyring and is typed in when Windows starts.
+- **SSH and agents.** Key-only SSH, PowerShell, file copies, metrics and updates, all as JSON from `ws`.
+- **Guided setup.** It finds your drive and GPU, shows every file it will write, then asks for your password once.
 
 ```sh
 ws start
 ws exec --json '$PSVersionTable.PSVersion.ToString()'
+ws ssh --get 'C:/Logs/setup.log' .
 ws metrics
 ws stop
 ```

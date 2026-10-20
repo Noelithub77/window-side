@@ -1,5 +1,4 @@
 // Shared motion for scenes: data dots that ride arrow guides.
-import { gsap } from "gsap";
 import { packet } from "../icons.ts";
 import type { Sketch } from "../sketch.ts";
 
@@ -8,8 +7,6 @@ export type Scene = {
   story: gsap.core.Timeline;
   /** Paused. Ambient motion once the story has finished. */
   loop?: gsap.core.Timeline;
-  /** Responds to the controls under the scene. */
-  act?: (value: string) => void;
 };
 
 export type Build = (svg: SVGSVGElement, narrow: boolean) => Scene;
@@ -41,11 +38,4 @@ export function travel(timeline: gsap.core.Timeline, s: Sketch, guide: SVGPathEl
   const dot = packet(s, color, r);
   const state = { p: 0 };
   timeline.to(state, { p: 1, duration, ease: "power1.inOut", onUpdate: () => place(dot, guide, length, state.p) }, at);
-}
-
-/** Shows one of several groups, fading the rest; used by scene controls. */
-export function choose(groups: Record<string, readonly Element[]>, value: string) {
-  for (const [key, elements] of Object.entries(groups)) {
-    gsap.to(elements, { opacity: key === value ? 1 : 0, duration: 0.45, ease: "power2.out", overwrite: true });
-  }
 }

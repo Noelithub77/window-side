@@ -82,14 +82,6 @@ export function chip(s: Sketch, cx: number, cy: number, size: number, label: str
   });
 }
 
-export function disc(s: Sketch, cx: number, cy: number, r: number, color: string): SVGGElement {
-  return s.group("disc", () => {
-    s.circle(cx, cy, r * 2, { stroke: color, fill: `${color}1f` });
-    s.circle(cx, cy, r * 0.5, { stroke: color, fill: ink.bg, rough: 0.5 });
-    s.path(`M${cx + r * 0.45} ${cy - r * 0.62}A${r * 0.76} ${r * 0.76} 0 0 1 ${cx + r * 0.72} ${cy - r * 0.2}`, { stroke: color, width: 1.6, rough: 0.4 });
-  });
-}
-
 /** A circular arrow, as on a restart button. */
 export function cycle(s: Sketch, cx: number, cy: number, r: number, color: string): SVGGElement {
   return s.group("cycle", () => {
@@ -102,22 +94,8 @@ export function cycle(s: Sketch, cx: number, cy: number, r: number, color: strin
   });
 }
 
-export function clock(s: Sketch, cx: number, cy: number, r: number, color: string): SVGGElement {
-  return s.group("clock", () => {
-    s.circle(cx, cy, r * 2, { stroke: color, fill: ink.bg });
-    s.polyline([[cx, cy - r * 0.6], [cx, cy], [cx + r * 0.45, cy + r * 0.25]], { stroke: color, width: 2.4, rough: 0.4 });
-  });
-}
-
 export function check(s: Sketch, cx: number, cy: number, size: number, color: string = ink.mint): SVGGElement {
   return s.polyline([[cx - size * 0.45, cy], [cx - size * 0.1, cy + size * 0.35], [cx + size * 0.5, cy - size * 0.4]], { stroke: color, width: 3, rough: 0.5 });
-}
-
-export function cross(s: Sketch, cx: number, cy: number, size: number, color: string = ink.rose): SVGGElement {
-  return s.group("cross", () => {
-    s.line([cx - size / 2, cy - size / 2], [cx + size / 2, cy + size / 2], { stroke: color, width: 3, rough: 0.5 });
-    s.line([cx + size / 2, cy - size / 2], [cx - size / 2, cy + size / 2], { stroke: color, width: 3, rough: 0.5 });
-  });
 }
 
 /** A labeled box; text is centered unless the box is tall enough for a title row. */

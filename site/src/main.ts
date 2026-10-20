@@ -47,6 +47,24 @@ for (const video of videos) {
   }
 }
 
+// The app tabs swap which recording plays in the one frame.
+document.addEventListener("click", (event) => {
+  const tab = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-video]") : null;
+  const name = tab?.dataset.video;
+  const video = document.querySelector<HTMLVideoElement>("[data-frame] video");
+  if (!tab || !name || !video) return;
+  for (const other of document.querySelectorAll("[data-video]")) other.setAttribute("aria-selected", String(other === tab));
+  video.poster = `/media/app/${name}.webp`;
+  video.parentElement?.style.setProperty("--focus", tab.dataset.focus ?? "50% 0");
+  for (const source of video.querySelectorAll<HTMLSourceElement>("source[data-src]")) {
+    source.dataset.src = source.dataset.src?.replace(/\/media\/app\/[a-z-]+\./, `/media/app/${name}.`);
+    if (video.dataset.loaded) source.src = source.dataset.src ?? "";
+  }
+  if (!video.dataset.loaded) return;
+  video.load();
+  if (!calm) void video.play().catch(() => undefined);
+});
+
 // Let the hero paint before requesting the motion libraries.
 const idle = (callback: () => void, timeout: number) =>
   "requestIdleCallback" in window ? requestIdleCallback(callback, { timeout }) : setTimeout(callback, 120);

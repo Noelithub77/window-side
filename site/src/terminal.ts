@@ -83,7 +83,7 @@ export function startTerminal(body: HTMLElement, tabs: HTMLElement, transcripts:
 // Each ask, and the `ws` commands an agent would run for it.
 const asks = [
   { ask: "Build the Windows release of this app and run its tests.", plan: ["ws start", "ws copy app.zip 'C:\\build\\app.zip'", "ws exec --json '.\\build.ps1 -Test'"] },
-  { ask: "Does the installer still work on Windows 11? Check the logs.", plan: ["ws copy setup.exe 'C:\\Users\\Public\\setup.exe'", "ws exec --json --file install-check.ps1", "ws ssh --get 'C:\\Logs\\setup.log' ."] },
+  { ask: "Does the installer still work on Windows 11? Check the logs.", plan: ["ws copy setup.exe 'C:\\Users\\Public\\setup.exe'", "ws exec --json --file install-check.ps1", "ws ssh --get 'C:/Logs/setup.log' ."] },
   { ask: "Which Windows updates are waiting? Don’t install them yet.", plan: ["ws updates check", "ws updates status"] },
   { ask: "Copy the build over and time how long it takes to start.", plan: ["ws copy app.exe 'C:\\build\\app.exe'", "ws exec --json 'Measure-Command { C:\\build\\app.exe --smoke }'", "ws metrics"] },
   { ask: "Set up window-side on this laptop. Show me the plan first.", plan: ["ws setup detect", "ws setup plan", "then you approve: ws setup apply"] },
