@@ -1,0 +1,146 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: 'Bricolage Grotesque Variable', var(--font-sans);
+    --font-sans: 'Inter Variable', sans-serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+    --color-mint: var(--mint);
+    --color-lavender: var(--lavender);
+    --color-peach: var(--peach);
+    --color-rose: var(--rose);
+    --color-sky: var(--sky);
+    --color-ink: var(--ink);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* One dark pastel surface; Omarchy appearance overrides these at runtime. */
+:root {
+    color-scheme: dark;
+    --ink: oklch(0.155 0.014 285);
+    --mint: oklch(0.86 0.105 170);
+    --lavender: oklch(0.79 0.105 292);
+    --peach: oklch(0.85 0.085 58);
+    --rose: oklch(0.8 0.1 355);
+    --sky: oklch(0.83 0.08 232);
+    --background: var(--ink);
+    --foreground: oklch(0.96 0.008 285);
+    --card: oklch(0.205 0.016 285 / 0.72);
+    --card-foreground: var(--foreground);
+    --popover: oklch(0.215 0.016 285);
+    --popover-foreground: var(--foreground);
+    --primary: var(--mint);
+    --primary-foreground: oklch(0.22 0.04 175);
+    --secondary: oklch(0.26 0.018 285);
+    --secondary-foreground: var(--foreground);
+    --muted: oklch(0.25 0.016 285 / 0.8);
+    --muted-foreground: oklch(0.7 0.02 285);
+    --accent: oklch(0.28 0.02 285);
+    --accent-foreground: var(--foreground);
+    --destructive: oklch(0.72 0.15 20);
+    --border: oklch(1 0 0 / 8%);
+    --input: oklch(1 0 0 / 12%);
+    --ring: color-mix(in oklch, var(--mint) 60%, transparent);
+    --chart-1: var(--mint);
+    --chart-2: var(--lavender);
+    --chart-3: var(--rose);
+    --chart-4: var(--sky);
+    --chart-5: var(--peach);
+    --radius: 0.875rem;
+    --sidebar: oklch(0.18 0.015 285 / 0.6);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--mint);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: oklch(0.26 0.018 285);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html, body, #root {
+    @apply h-full overflow-hidden;
+  }
+  body {
+    @apply bg-background text-foreground antialiased select-none;
+    font-feature-settings: "cv11", "ss01";
+  }
+  input, textarea, pre, code {
+    @apply select-text;
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: oklch(1 0 0 / 12%) padding-box;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hairline highlight along the top edge of raised surfaces. */
+@utility sheen {
+  box-shadow: inset 0 1px 0 0 oklch(1 0 0 / 6%), 0 18px 48px -24px oklch(0 0 0 / 70%);
+}
+
+@utility glass {
+  background: var(--card);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+}
