@@ -36,7 +36,8 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
    because it has no API to raise another app's window. `oo7` and
    `notify-rust` replace `secret-tool` and `notify-send`. KDE and GNOME paths
    are untested on those desktops.
-4. GPU usage in guest metrics.
+4. GPU usage in guest metrics. Done; parsed and checked with sample counters,
+   not yet read from a running Windows guest.
 5. Tray.
 6. GRUB and systemd-boot GPU profiles with initramfs-tools and dracut.
 7. One-command install.

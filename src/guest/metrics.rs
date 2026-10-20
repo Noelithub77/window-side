@@ -19,6 +19,9 @@ const CACHE_SECONDS: f64 = 10.0;
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
     cpu_percent: f64,
+    /// Missing when Windows has no GPU driver, such as on the virtual display.
+    #[serde(default)]
+    gpu_percent: Option<f64>,
     memory_total_bytes: f64,
     memory_used_bytes: f64,
     uptime_seconds: f64,
@@ -39,6 +42,7 @@ impl Snapshot {
         ];
         counts.iter().all(|value| value.is_finite() && *value >= 0.0)
             && self.cpu_percent <= 100.0
+            && self.gpu_percent.is_none_or(|gpu| (0.0..=100.0).contains(&gpu))
             && self.memory_total_bytes > 0.0
             && self.memory_used_bytes <= self.memory_total_bytes
             && !self.booted_at.is_empty()
@@ -173,7 +177,7 @@ mod tests {
 
     fn snapshot() -> Snapshot {
         Snapshot {
-            cpu_percent: 12.5, memory_total_bytes: 8.0 * 1024.0 * 1024.0 * 1024.0, memory_used_bytes: 2.0 * 1024.0 * 1024.0 * 1024.0,
+            cpu_percent: 12.5, gpu_percent: Some(40.0), memory_total_bytes: 8.0 * 1024.0 * 1024.0 * 1024.0, memory_used_bytes: 2.0 * 1024.0 * 1024.0 * 1024.0,
             uptime_seconds: 60.0, booted_at: "2026-10-19T00:00:00Z".into(), network_received_bytes: 2048.0,
             network_sent_bytes: 1024.0, process_count: 120.0, reboot_required: Some(false), sampled_at: 1000.0,
         }
@@ -183,6 +187,8 @@ mod tests {
     fn rejects_impossible_samples() {
         assert!(snapshot().is_valid());
         assert!(!Snapshot { cpu_percent: 140.0, ..snapshot() }.is_valid());
+        assert!(!Snapshot { gpu_percent: Some(f64::NAN), ..snapshot() }.is_valid());
+        assert!(Snapshot { gpu_percent: None, ..snapshot() }.is_valid());
         assert!(!Snapshot { memory_used_bytes: 9e12, ..snapshot() }.is_valid());
         assert!(!Snapshot { booted_at: String::new(), ..snapshot() }.is_valid());
     }
@@ -196,6 +202,7 @@ mod tests {
         assert_eq!(result["memoryPercent"], 25.0);
         assert_eq!(result["uptimeSeconds"], 90);
         assert_eq!(result["pids"], 120);
+        assert_eq!(result["gpuPercent"], 40.0);
     }
 
     #[test]
