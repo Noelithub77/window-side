@@ -21,11 +21,17 @@ const STATES: Record<VmState, { label: string; dot: string }> = {
   unavailable: { label: "Unavailable", dot: "bg-destructive" },
 }
 
-function StateChip({ state }: { state: VmState }) {
+/** The reason replaces the bare "Unavailable" label, so the chip says what is wrong. */
+function StateChip({ state, reason }: { state: VmState; reason: string | null }) {
   const busy = useApp((store) => store.busy)
   const look = STATES[state]
+  const blocked = state === "unavailable" && !busy
   return (
-    <motion.span layoutId="hero-chip" transition={SPRING} className="glass inline-flex h-7 items-center gap-2 rounded-full px-3 text-xs font-medium ring-1 ring-border">
+    <motion.span
+      layoutId="hero-chip"
+      transition={SPRING}
+      className={cn("glass inline-flex h-7 items-center gap-2 rounded-full px-3 text-xs font-medium ring-1", blocked ? "text-destructive ring-destructive/30" : "ring-border")}
+    >
       {busy ? (
         <Spinner className="size-3 text-peach" />
       ) : (
@@ -34,7 +40,7 @@ function StateChip({ state }: { state: VmState }) {
           <span className={cn("relative size-2 rounded-full", look.dot)} />
         </span>
       )}
-      {busy ?? look.label}
+      {busy ?? (blocked && reason ? reason : look.label)}
     </motion.span>
   )
 }
@@ -105,7 +111,7 @@ export function LiveHero({ status }: { status: Status }) {
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-3">
           <Title />
-          <StateChip state={status.state} />
+          <StateChip state={status.state} reason={status.unavailableReason} />
         </div>
         <motion.div className="flex items-center gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
           {status.uptimeSeconds !== null && <Stat icon={Clock} value={uptime(status.uptimeSeconds)} label="Uptime" />}
@@ -133,7 +139,7 @@ export function RestHero({ status }: { status: Status }) {
       <Mark size={84} live={launching} />
       <div className="flex flex-col items-center gap-3">
         <Title />
-        <StateChip state={status.state} />
+        <StateChip state={status.state} reason={status.unavailableReason} />
         {status.vm && (
           <motion.div className="flex items-center gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
             <Stat icon={MemoryStick} value={gib(status.vm.memoryMib)} label="Memory" />

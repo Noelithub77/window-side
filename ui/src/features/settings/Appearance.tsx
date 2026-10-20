@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Palette, PanelTop, Plus } from "lucide-react"
+import { Check, Palette, PanelTop, Plus } from "lucide-react"
 import { motion } from "motion/react"
 import { toast } from "sonner"
 import { ChoiceCard } from "@/components/app/ChoiceCard"
@@ -70,10 +70,17 @@ export function Appearance({ shell, delay }: { shell: Shell; delay: number }) {
           <PanelTop className="size-4 text-muted-foreground" />
           <span className="text-sm">Omarchy panel</span>
           <div className="flex-1" />
-          <Button variant="ghost" size="sm" className="rounded-full" disabled={busy !== null} onClick={() => void run("Adding to panel", { kind: "installPlugin" })}>
-            <Plus />
-            Add
-          </Button>
+          {shell.panelInstalled ? (
+            <span className="mr-1 flex items-center gap-1.5 rounded-full bg-mint/12 px-2.5 py-1 text-xs font-medium text-mint">
+              <Check className="size-3.5" />
+              Added
+            </span>
+          ) : (
+            <Button variant="ghost" size="sm" className="rounded-full" disabled={busy !== null} onClick={() => void run("Adding to panel", { kind: "installPlugin" })}>
+              <Plus />
+              Add
+            </Button>
+          )}
         </div>
       )}
     </Panel>
