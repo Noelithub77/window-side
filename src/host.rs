@@ -83,6 +83,9 @@ pub fn verify_gpu_claimed(gpu: &Gpu) -> Result<()> {
 
 /// Hostdev XML that libvirt attaches for one PCI function, e.g. `0000:01:00.0`.
 pub fn hostdev_xml(address: &str) -> Result<String> {
+    if !valid_pci_address(address) {
+        bail!("Invalid PCI address: {address}");
+    }
     let parts: Vec<&str> = address.split([':', '.']).collect();
     let [domain, bus, slot, function] = parts.as_slice() else { bail!("Invalid PCI address: {address}") };
     Ok(format!(
@@ -92,8 +95,16 @@ pub fn hostdev_xml(address: &str) -> Result<String> {
     ))
 }
 
+/// `domain:bus:slot.function` in lowercase hex, e.g. `0000:01:00.0`.
+pub fn valid_pci_address(address: &str) -> bool {
+    let hex = |part: &str, length: usize| part.len() == length && part.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
+    let parts: Vec<&str> = address.split([':', '.']).collect();
+    matches!(parts.as_slice(), [domain, bus, slot, function]
+        if hex(domain, 4) && hex(bus, 2) && hex(slot, 2) && function.len() == 1 && ('0'..='7').contains(&function.chars().next().unwrap_or('8')))
+}
+
 /// Limine entry titles look like `Omarchy/linux-omarchy`; nothing else reaches the root edit.
-fn valid_entry(entry: &str) -> bool {
+pub fn valid_entry(entry: &str) -> bool {
     !entry.is_empty() && entry.chars().all(|c| c.is_ascii_alphanumeric() || " /._-()".contains(c))
 }
 

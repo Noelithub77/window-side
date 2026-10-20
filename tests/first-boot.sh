@@ -54,7 +54,22 @@ provisioned = false
 CONFIG
 binary="${WS_TEST_BINARY:-$root/target/debug/ws}"
 status() { "$binary" setup first-boot status; }
+config="$fixture/config/window-side/config.json"
+# The first read migrates the legacy TOML config to JSON beside its schema.
 status | jq -e '.stage == "start" and .environment == "window-side-libvirt"' >/dev/null
+jq -e '.vm.name == "fixture" and .vm.virtio == false and ."$schema" == "./config.schema.json"' "$config" >/dev/null
+jq -e '.properties.vm and .additionalProperties == false' "$fixture/config/window-side/config.schema.json" >/dev/null
+[[ -f "$fixture/config/window-side/config.toml.migrated" && ! -e "$fixture/config/window-side/config.toml" ]]
+"$binary" config validate | jq -e '.valid' >/dev/null
+"$binary" config get vm.memory_mib | jq -e '. == 8192' >/dev/null
+"$binary" config set windows.refresh_hz 75 | jq -e '.before == "60" and .after == "75" and (.redefined | not)' >/dev/null
+"$binary" config set hooks.before_start '["true"]' | jq -e '.after == ["true"]' >/dev/null
+jq -e '.windows.refresh_hz == "75"' "$config" >/dev/null
+for refused in 'disk.id x' 'vm.virtio true' 'vm.memory_mib lots' 'boot.gpu_entry bad;entry' 'nope 1'; do
+  read -r key value <<< "$refused"
+  if "$binary" config set "$key" "$value" >"$fixture/out" 2>"$fixture/error"; then echo "config set accepted $refused" >&2; exit 1; fi
+done
+jq -e '.windows.refresh_hz == "75" and .vm.memory_mib == 8192' "$config" >/dev/null
 export WS_TEST_STATE=running
 status | jq -e '.stage == "drivers"' >/dev/null
 export WS_TEST_AGENT=1
@@ -73,19 +88,19 @@ if "$binary" setup first-boot recover >"$fixture/out" 2>"$fixture/error"; then e
 rg -q 'Stop Windows' "$fixture/error"
 export WS_TEST_STATE='shut off'
 printf 'sata fixture\n' > "$fixture/state/window-side/first-boot-domain-before.xml"
-cp "$fixture/config/window-side/config.toml" "$fixture/state/window-side/first-boot-config-before.toml"
-sed -i 's/virtio = false/virtio = true/' "$fixture/config/window-side/config.toml"
+cp "$config" "$fixture/state/window-side/first-boot-config-before.json"
+jq '.vm.virtio = true' "$config" > "$fixture/virtio.json" && mv "$fixture/virtio.json" "$config"
 printf 'virtio fixture\n' > "$fixture/config/window-side/domain.xml"
-cp "$fixture/config/window-side/config.toml" "$fixture/current.toml"
+cp "$config" "$fixture/current.json"
 export WS_TEST_DEFINE_FAIL=1
 if "$binary" setup first-boot recover >"$fixture/out" 2>"$fixture/error"; then echo 'Rejected definition reported success' >&2; exit 1; fi
-cmp "$fixture/current.toml" "$fixture/config/window-side/config.toml"
+cmp "$fixture/current.json" "$config"
 rg -q '^virtio fixture$' "$fixture/config/window-side/domain.xml"
 export WS_TEST_DEFINE_FAIL=0
 "$binary" setup first-boot recover | jq -e '.stage == "start"' >/dev/null
-rg -q '^virtio = false$' "$fixture/config/window-side/config.toml"
+jq -e '.vm.virtio == false' "$config" >/dev/null
 rg -q '^sata fixture$' "$fixture/config/window-side/domain.xml"
-printf '%s\n' 'First-boot fixture checks passed: readiness, refusal before mutation, recovery and rollback'
+printf '%s\n' 'First-boot fixture checks passed: JSON migration, ws config, readiness, refusal before mutation, recovery and rollback'
 # Plugin repair also runs without hardware detection or a Windows config.
 mkdir -p "$fixture/.config/omarchy/plugins" "$fixture/external-plugin"
 printf 'keep linked plugin\n' > "$fixture/external-plugin/manifest.json"

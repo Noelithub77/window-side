@@ -14,6 +14,26 @@ pub fn domain_file() -> std::path::PathBuf {
     config_dir().join("domain.xml")
 }
 
+/// Saves a new VM definition with its config; on failure restores both and the old definition.
+pub fn redefine(config: &Config, xml: &str) -> Result<()> {
+    let domain_path = domain_file();
+    let file = domain_path.display().to_string();
+    let old_xml = fs::read_to_string(&domain_path)?;
+    let old_config = fs::read_to_string(Config::path())?;
+    let result = (|| {
+        fs::write(&domain_path, xml)?;
+        virsh::run(&["define", "--validate", &file])?;
+        config.save()
+    })();
+    if let Err(error) = result {
+        fs::write(&domain_path, old_xml).context("Redefining failed and the old domain could not be restored")?;
+        fs::write(Config::path(), old_config).context("Redefining failed and the old configuration could not be restored")?;
+        virsh::run(&["define", "--validate", &file]).context("Redefining failed and libvirt could not restore the old definition")?;
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn verify_host(config: &Config, profile: Profile) -> Result<()> {
     if !domain_file().exists() {
         bail!("Missing configuration: {}", domain_file().display());

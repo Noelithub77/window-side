@@ -3,7 +3,7 @@ pub mod domain;
 pub mod files;
 pub mod root;
 
-use crate::config::{Boot, Config, Disk, DiskMode, Gpu, Vm, Windows, config_dir, home};
+use crate::config::{Boot, Config, Disk, DiskMode, Gpu, Vm, Windows, home};
 use crate::detect::disks::WindowsInstall;
 use crate::detect::gpus::{Blocker, Gpu as DetectedGpu};
 use crate::detect::system::System;
@@ -248,9 +248,7 @@ pub fn apply(plan: &Plan) -> Result<()> {
     if let (Some(normal), Some(gpu)) = (entries["normalEntry"].as_str(), entries["gpuEntry"].as_str()) {
         config.boot = Boot { normal_entry: normal.to_owned(), gpu_entry: gpu.to_owned() };
     }
-    let directory = config_dir();
-    fs::create_dir_all(&directory)?;
-    fs::write(directory.join("config.toml"), toml::to_string(&config)?)?;
+    config.save()?;
     fs::write(lifecycle::domain_file(), &plan.domain_xml)?;
     virsh::run(&["define", "--validate", &lifecycle::domain_file().display().to_string()]).context("libvirt rejected the VM definition")?;
     if plan.plugin {

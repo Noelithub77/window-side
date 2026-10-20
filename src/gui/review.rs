@@ -96,7 +96,7 @@ impl WindowSide {
         }
         let mut paths: Vec<String> = plan.root.files.iter().map(|file| file.path.clone()).collect();
         paths.extend([
-            "~/.config/window-side/config.toml".into(),
+            "~/.config/window-side/config.json".into(),
             "~/.config/window-side/domain.xml".into(),
         ]);
         paths.extend(plan.plugin.then(|| "~/.config/omarchy/plugins/noel.window-side/".into()));

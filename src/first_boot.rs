@@ -1,5 +1,5 @@
 //! Compatibility boot, driver readiness and the cold transition to VirtIO.
-use crate::config::{Config, config_dir, state_dir};
+use crate::config::{Config, state_dir};
 use crate::display::{console, looking_glass};
 use crate::guest::{agent, commands};
 use crate::host::{self, Profile};
@@ -96,26 +96,6 @@ pub fn start(config: &Config) -> Result<()> {
     console::open(&config.vm.name)
 }
 
-/// On failure after shutdown, restore compatibility settings and leave Windows stopped for inspection.
-fn save_transition(config: &Config, xml: &str, old_config: &str, old_xml: &str) -> Result<()> {
-    let config_path = config_dir().join("config.toml");
-    let domain_path = lifecycle::domain_file();
-    let result = (|| {
-        fs::write(&domain_path, xml)?;
-        virsh::run(&["define", "--validate", &domain_path.display().to_string()])?;
-        fs::write(&config_path, toml::to_string(config)?)?;
-        Ok(())
-    })();
-    if let Err(error) = result {
-        fs::write(&domain_path, old_xml).context("Transition failed and the SATA domain could not be restored")?;
-        fs::write(config_path, old_config).context("Transition failed and the old configuration could not be restored")?;
-        virsh::run(&["define", "--validate", &domain_path.display().to_string()])
-            .context("Transition failed and libvirt could not restore the SATA definition")?;
-        return Err(error);
-    }
-    Ok(())
-}
-
 /// Explicitly provisions Windows, closes its apps cleanly, switches buses while stopped and boots again.
 pub fn finish(config: &Config) -> Result<Status> {
     let _lock = workflow_lock()?;
@@ -139,10 +119,10 @@ pub fn finish(config: &Config) -> Result<Status> {
     ensure!(choices.windows == inventory.windows.iter().find(|disk| disk.filesystem_uuid == config.disk.windows_partition_uuid)
         .context("The configured Windows partition was not detected")?.partition, "The Windows install changed during setup");
     let plan = setup::plan(&inventory, &choices, Some(&upgraded))?;
-    let old_config = fs::read_to_string(config_dir().join("config.toml"))?;
+    let old_config = fs::read_to_string(Config::path())?;
     let old_xml = fs::read_to_string(lifecycle::domain_file())?;
     if !config.vm.virtio {
-        commands::write_private(&state_dir().join("first-boot-config-before.toml"), &old_config)?;
+        commands::write_private(&state_dir().join(RECOVERY_CONFIG), &old_config)?;
         commands::write_private(&state_dir().join("first-boot-domain-before.xml"), &old_xml)?;
     }
     agent::install_script(domain, "display-startup.ps1", DISPLAY_STARTUP)?;
@@ -150,27 +130,36 @@ pub fn finish(config: &Config) -> Result<Status> {
     let applied = read_guest(domain, true)?;
     ensure!(applied.applied && applied.stage() == Stage::Ready, "Windows provisioning did not complete");
     lifecycle::stop(domain)?;
-    save_transition(&upgraded, &plan.domain_xml, &old_config, &old_xml)?;
+    lifecycle::redefine(&upgraded, &plan.domain_xml)?;
     lifecycle::start(&upgraded, profile).context("VirtIO start failed; SATA recovery files are in the window-side state directory")?;
     lifecycle::wait_for_agent(domain).context("VirtIO boot is unverified; compatibility recovery files are in the window-side state directory")?;
     upgraded.windows.provisioned = true;
-    fs::write(config_dir().join("config.toml"), toml::to_string(&upgraded)?)?;
+    upgraded.save()?;
     status(&upgraded)
 }
 
 pub fn recover(config: &Config) -> Result<()> {
     let _lock = workflow_lock()?;
     ensure!(!virsh::is_running(&config.vm.name), "Stop Windows before restoring its SATA configuration");
-    let old_config = fs::read_to_string(state_dir().join("first-boot-config-before.toml"))
-        .context("No first-boot recovery configuration was saved")?;
-    let previous: Config = toml::from_str(&old_config)?;
+    let previous = recovery_config()?;
     ensure!(!previous.vm.virtio && previous.vm.name == config.vm.name
         && previous.disk.id == config.disk.id && previous.disk.windows_partition_uuid == config.disk.windows_partition_uuid,
         "The recovery files belong to a different Windows setup");
     let old_xml = fs::read_to_string(state_dir().join("first-boot-domain-before.xml"))?;
-    save_transition(&previous, &old_xml,
-        &fs::read_to_string(config_dir().join("config.toml"))?,
-        &fs::read_to_string(lifecycle::domain_file())?)
+    lifecycle::redefine(&previous, &old_xml)
+}
+
+const RECOVERY_CONFIG: &str = "first-boot-config-before.json";
+
+/// The pre-VirtIO config; recovery files saved before the JSON switch are TOML.
+fn recovery_config() -> Result<Config> {
+    let json = state_dir().join(RECOVERY_CONFIG);
+    if json.exists() {
+        return Config::parse(&fs::read_to_string(json)?);
+    }
+    let text = fs::read_to_string(state_dir().join("first-boot-config-before.toml"))
+        .context("No first-boot recovery configuration was saved")?;
+    Ok(toml::from_str(&text)?)
 }
 
 #[cfg(test)]

@@ -20,19 +20,25 @@ struct Preferences {
 }
 
 impl Appearance {
+    /// `preferences.json`, or the `appearance.toml` written before it.
     pub(super) fn load() -> Self {
-        fs::read_to_string(config_dir().join("appearance.toml"))
+        let json = fs::read_to_string(config_dir().join("preferences.json"))
             .ok()
-            .and_then(|text| toml::from_str::<Preferences>(&text).ok())
-            .unwrap_or_default()
-            .appearance
+            .and_then(|text| serde_json::from_str::<Preferences>(&text).ok());
+        json.or_else(|| {
+            fs::read_to_string(config_dir().join("appearance.toml"))
+                .ok()
+                .and_then(|text| toml::from_str::<Preferences>(&text).ok())
+        })
+        .unwrap_or_default()
+        .appearance
     }
 
     pub(super) fn save(self) -> Result<()> {
         fs::create_dir_all(config_dir())?;
         fs::write(
-            config_dir().join("appearance.toml"),
-            toml::to_string(&Preferences { appearance: self })?,
+            config_dir().join("preferences.json"),
+            serde_json::to_string_pretty(&Preferences { appearance: self })? + "\n",
         )?;
         Ok(())
     }

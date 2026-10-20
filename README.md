@@ -92,6 +92,29 @@ agent answers; unqueried driver readings are null.
 file symlinks report `managed-externally` and stay intact. The installer does
 not install or enable the panel automatically.
 
+## Configuration
+
+Setup writes `~/.config/window-side/config.json` beside a generated
+`config.schema.json`; window preferences live in `preferences.json`. A
+`config.toml` from older versions is converted once and kept as
+`config.toml.migrated`. Every command prints JSON:
+
+```sh
+ws config path                       # config, schema and VM definition paths
+ws config show                       # the whole config, defaults included
+ws config get vm.memory_mib
+ws config set vm.memory_mib 12288    # validates, then redefines stopped Windows
+ws config set windows.refresh_hz 144
+ws config validate
+ws config schema
+```
+
+`set` reports the value before and after. Memory and CPU changes go through the
+same host limits and VM rendering as setup, and are refused while Windows
+runs. Disk and GPU values change system files, so they stay with
+`ws setup plan` and `ws setup apply`; first-boot state stays with
+`ws setup first-boot`.
+
 ## Agent access
 
 ```sh
