@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
-import { ArrowRight, Bot, Check, HardDrive, Package, ShieldCheck } from "lucide-react"
+import { ArrowRight, Bot, Check, Copy, HardDrive, Package, ShieldCheck } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 import { GlowButton } from "@/components/app/GlowButton"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api, message } from "@/lib/api"
 import type { AgentId } from "@/bindings"
@@ -63,42 +63,72 @@ function Readiness() {
   )
 }
 
+type Done = "copied" | "opened" | null
+
+const DONE = { copied: "Prompt copied", opened: "Opened in terminal" }
+
 function AgentMenu() {
   const agents = useApp((state) => state.shell?.agents ?? [])
-  const [copied, setCopied] = useState(false)
+  const [done, setDone] = useState<Done>(null)
 
-  async function copy(agent: AgentId) {
+  async function act(task: () => Promise<Done>) {
     try {
-      await navigator.clipboard.writeText(await api.agentPrompt(agent))
-      setCopied(true)
+      setDone(await task())
       window.setTimeout(() => {
-        setCopied(false)
+        setDone(null)
       }, 2400)
     } catch (error) {
       toast.error(message(error))
     }
   }
 
-  if (!agents.length) return null
+  // The prompt is the same for every agent; the id only satisfies the command.
+  const copy = () =>
+    act(async () => {
+      await navigator.clipboard.writeText(await api.agentPrompt(agents[0]?.id ?? "claude"))
+      return "copied"
+    })
+  const launch = (agent: AgentId) =>
+    act(async () => {
+      await api.launchAgent(agent)
+      return "opened"
+    })
+
+  const label = (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span key={done ?? "idle"} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="flex items-center gap-2">
+        {done ? <Check className="text-mint" /> : <Bot />}
+        {done ? DONE[done] : agents.length ? "Set up with an agent" : "Copy agent prompt"}
+      </motion.span>
+    </AnimatePresence>
+  )
+
+  if (!agents.length) {
+    return (
+      <Button variant="ghost" className="rounded-full text-muted-foreground" onClick={() => void copy()}>
+        {label}
+      </Button>
+    )
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="rounded-full text-muted-foreground">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span key={copied ? "copied" : "agent"} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="flex items-center gap-2">
-              {copied ? <Check className="text-mint" /> : <Bot />}
-              {copied ? "Prompt copied" : "Set up with an agent"}
-            </motion.span>
-          </AnimatePresence>
+          {label}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="center">
         {agents.map((agent) => (
-          <DropdownMenuItem key={agent.id} onSelect={() => void copy(agent.id)}>
+          <DropdownMenuItem key={agent.id} onSelect={() => void launch(agent.id)}>
             <Bot />
             {agent.name}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => void copy()}>
+          <Copy />
+          Copy prompt
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
