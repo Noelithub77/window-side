@@ -96,6 +96,7 @@ omabox wait -b "$tray_box" --timeout 20s cmd -- sh -c 'busctl --user --json=shor
 sleep 3
 omabox keys -b "$tray_box" --window class:ws super+w
 omabox wait -b "$tray_box" --timeout 15s window class:ws --gone >/dev/null
+omabox pointer -b "$tray_box" -- move 1471 12 sleep 800 move 1440 12 sleep 100
 omabox shot -b "$tray_box" -o "$raw/tray.png" >/dev/null
 omabox pointer -b "$tray_box" -- move 1510 12 click right
 omabox pointer -b "$tray_box" -- move 900 700
