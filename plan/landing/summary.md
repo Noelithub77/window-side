@@ -32,7 +32,8 @@ idle with motion, scenes and the shader. Reduced motion shows final frames.
 ## Sections
 
 Why (dual boot is a wall) · the app (overview and setup recordings, settings,
-tray, Omarchy panel) · GPU passthrough · sign-in · SSH and agents · your Linux · get.
+tray, Omarchy panel) · GPU passthrough · sign-in · for developers (SSH, app
+testing, agent skills) · your Linux · get.
 
 ## Status
 

@@ -28,7 +28,8 @@
       .brand .mark{width:26px;height:26px}
       .hero{position:relative;min-height:100svh;display:grid;place-items:center;padding:110px 20px 120px;text-align:center;isolation:isolate;overflow:hidden}
       .hero-backdrop{position:absolute;inset:0;z-index:-3;background:radial-gradient(50% 40% at 50% 18%,#bcaef914,transparent 70%),radial-gradient(60% 50% at 50% 78%,#85e8c60e,transparent 70%)}
-      .hero-canvas{position:absolute;inset:0;z-index:-2;width:100%;height:100%;opacity:0;transition:opacity 1.6s ease}.hero-canvas.is-live{opacity:1}
+      .hero-backdrop,.hero-canvas{-webkit-mask-image:linear-gradient(#000 55%,transparent);mask-image:linear-gradient(#000 55%,transparent)}
+.hero-canvas{position:absolute;inset:0;z-index:-2;width:100%;height:100%;opacity:0;transition:opacity 1.6s ease}.hero-canvas.is-live{opacity:1}
       .hero-inner{position:relative;width:min(100%,880px);display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
       .mark{display:block;overflow:visible}
       .hero .mark{width:clamp(96px,13vw,132px);height:auto;filter:drop-shadow(0 18px 50px #85e8c640)}
@@ -59,7 +60,7 @@
     <header class="bar">
       <a class="brand" href="#top" aria-label="window-side home"><!--mark:brand-mark-->window-side</a>
       <nav class="nav" aria-label="Sections">
-        <a href="#why">Why</a><a href="#app">App</a><a href="#gpu">GPU</a><a href="#agents">Agents</a>
+        <a href="#why">Why</a><a href="#app">App</a><a href="#gpu">GPU</a><a href="#agents">Dev</a>
       </nav>
       <i class="bar-progress" aria-hidden="true"></i>
       <div class="bar-end">
@@ -174,9 +175,9 @@
       <section class="section" id="agents">
         <div class="wrap">
           <div class="section-head center" data-reveal>
-            <p class="kicker"><span>05</span> SSH and agents</p>
-            <h2>Windows,<br />from your terminal.</h2>
-            <p>Key-only SSH, PowerShell, file copies both ways, live metrics and Windows Update, all as JSON. Hand it to your coding agent, even for setup.</p>
+            <p class="kicker"><span>05</span> For developers</p>
+            <h2>Test Windows apps<br />from Linux.</h2>
+            <p>Shell into your real Windows with key-only SSH or PowerShell. Copy builds in, run tests and installers, pull logs out, all as JSON. Bundled skills teach your coding agent to do it for you.</p>
           </div>
           <div class="agents">
             <div class="prompt" data-reveal>
@@ -189,6 +190,16 @@
               <div class="term-bar"><i></i><i></i><i></i><span>ws</span></div>
               <pre class="term-body" data-term><span class="term-cmd">$ ws ssh '$PSVersionTable.PSVersion.ToString()'</span></pre>
               <div class="term-tabs" role="tablist" aria-label="Commands" data-term-tabs></div>
+            </div>
+          </div>
+          <div class="skills" data-reveal>
+            <div>
+              <p class="prompt-label"><span class="dot"></span> Agent skills</p>
+              <ul class="prompt-agents"><li>window-side</li><li>windows-app-testing</li><li>window-side-setup</li></ul>
+            </div>
+            <div class="get-row">
+              <code data-command><b>$ </b>ws skills install</code>
+              <button class="copy is-quiet" type="button" data-copy><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="3" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg><span data-copy-label>Copy</span></button>
             </div>
           </div>
         </div>
