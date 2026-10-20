@@ -57,3 +57,13 @@ export function message(error: unknown): string {
   if (error instanceof Error) return error.message
   return "Something went wrong"
 }
+
+// WebKitGTK may deny the browser API after an asynchronous command loses activation.
+if (native) {
+  const clipboard = navigator.clipboard
+  const write = clipboard.writeText.bind(clipboard)
+  clipboard.writeText = async (text: string): Promise<void> => {
+    try { await write(text) }
+    catch { await empty(commands.copyText(text)) }
+  }
+}

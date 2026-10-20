@@ -1,7 +1,7 @@
 //! Synthetic scenarios; every command stays in memory and cannot reach host operations.
 use super::{readings, types::*};
 
-pub struct Fixture { pub status: Status, pub appearance: Appearance, step: u32 }
+pub struct Fixture { pub status: Status, pub appearance: Appearance, step: u32, started: Option<std::time::Instant> }
 impl Fixture {
     pub fn new(scenario: &str) -> anyhow::Result<Self> {
         anyhow::ensure!(["setup", "status", "stopped", "first-boot-start", "first-boot-ready"].contains(&scenario), "Unknown GUI fixture: {scenario}");
@@ -16,7 +16,7 @@ impl Fixture {
         if scenario.starts_with("first-boot-") { status.first_boot = Some(FirstBoot { stage: if running { FirstBootStage::Ready } else { FirstBootStage::Start }, storage_ready: running.then_some(true), network_ready: running.then_some(true) }); }
         if running { status.uptime_seconds = Some(if scenario == "status" { 3349. } else { 420. }); status.processes = Some(if scenario == "status" { 142. } else { 96. }); }
         if scenario == "status" { status.pending_updates = Some(2); }
-        Ok(Self { status, appearance: Appearance::Pastel, step: 48 })
+        Ok(Self { status, appearance: Appearance::Pastel, step: 48, started: None })
     }
     pub fn shell(&self) -> Shell {
         Shell { version: env!("CARGO_PKG_VERSION").into(), fixture: true, omarchy: true, appearance: self.appearance,
@@ -50,13 +50,20 @@ impl Fixture {
             Action::Stop | Action::ForceStop => { self.status.state = VmState::Stopped; self.status.uptime_seconds = None; self.status.processes = None; }
             Action::Reboot { profile } => self.status.boot_profile = Some(profile),
             Action::UpdatesInstall => self.status.pending_updates = None,
-            Action::FirstBootStart => { self.status.state = VmState::Running; self.status.first_boot = Some(FirstBoot { stage: FirstBootStage::Drivers, storage_ready: Some(false), network_ready: Some(false) }); }
-            Action::FirstBootFinish => self.status.first_boot = None,
+            Action::FirstBootStart => { self.started = Some(std::time::Instant::now()); self.status.state = VmState::Running; self.status.first_boot = Some(FirstBoot { stage: FirstBootStage::Drivers, storage_ready: Some(false), network_ready: Some(false) }); }
+            Action::FirstBootFinish => { self.started = None; self.status.first_boot = None; },
             _ => {}
         }
     }
     pub fn metrics(&mut self) -> Metrics {
         if self.status.state != VmState::Running { return Metrics::default(); }
+        if let Some(started) = self.started {
+            let elapsed = started.elapsed().as_secs_f64();
+            self.status.first_boot = Some(FirstBoot {
+                stage: if elapsed >= 10. { FirstBootStage::Ready } else if elapsed >= 7.5 { FirstBootStage::SignIn } else { FirstBootStage::Drivers },
+                storage_ready: Some(elapsed >= 2.5), network_ready: Some(elapsed >= 5.),
+            });
+        }
         let wave = |base: f64, swing: f64, speed: f64, phase: f64, step: u32| { let t = f64::from(step) * speed + phase; (base + swing * (t.sin() + 0.45 * (t * 2.3).sin())).max(0.) };
         let samples = (self.step.saturating_sub(48)..self.step).map(|i| Sample { at: f64::from(i), cpu: Some(wave(16.,8.,0.35,0.,i).min(100.)), memory: Some(wave(46.,3.,0.18,1.,i)), memory_used: Some(format!("{:.1} GiB / 16.0 GiB", 16. * wave(46.,3.,0.18,1.,i)/100.)), gpu: Some(wave(32.,15.,0.28,2.,i).min(100.)), down: Some(wave(900000.,600000.,0.4,0.5,i)), up: Some(wave(220000.,150000.,0.33,2.5,i)) }).collect();
         self.step += 1;

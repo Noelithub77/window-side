@@ -16,6 +16,7 @@ export const commands = {
 	setAppearance: (appearance: Appearance) => typedError<Shell>(__TAURI_INVOKE("set_appearance", { appearance })),
 	agentPrompt: (agent: AgentId) => typedError<string>(__TAURI_INVOKE("agent_prompt", { agent })),
 	subscriptions: (count: number) => typedError<null>(__TAURI_INVOKE("subscriptions", { count })),
+	copyText: (text: string) => typedError<null>(__TAURI_INVOKE("copy_text", { text })),
 	smokeReport: (report: Report) => typedError<null>(__TAURI_INVOKE("smoke_report", { report })),
 };
 
@@ -200,4 +201,4 @@ async function typedError<T>(result: Promise<T>): Promise<Result<T, string>> {
 
 
 type CommandData<T> = T extends null ? void : T
-export type Commands = { [K in Exclude<keyof typeof commands, 'subscriptions' | 'smokeReport'>]: (...args: Parameters<(typeof commands)[K]>) => Promise<CommandData<Extract<Awaited<ReturnType<(typeof commands)[K]>>, { status: 'ok' }>['data']>> }
+export type Commands = { [K in Exclude<keyof typeof commands, 'subscriptions' | 'smokeReport' | 'copyText'>]: (...args: Parameters<(typeof commands)[K]>) => Promise<CommandData<Extract<Awaited<ReturnType<(typeof commands)[K]>>, { status: 'ok' }>['data']>> }

@@ -94,7 +94,7 @@ pub fn subscriptions(state: Managed<'_, State>, count: u32) -> Reply<()> {
 }
 
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::new().typed_error_impl(ERROR_RUNTIME).commands(tauri_specta::collect_commands![shell, detect, plan, apply, status, metrics, run, save_credential, forget_credential, set_appearance, agent_prompt, subscriptions, super::smoke::smoke_report]).typ::<bindings::Events>()
+    tauri_specta::Builder::new().typed_error_impl(ERROR_RUNTIME).commands(tauri_specta::collect_commands![shell, detect, plan, apply, status, metrics, run, save_credential, forget_credential, set_appearance, agent_prompt, subscriptions, copy_text, super::smoke::smoke_report]).typ::<bindings::Events>()
 }
 
 struct Operation(std::sync::Arc<std::sync::atomic::AtomicBool>);
@@ -117,3 +117,10 @@ async function typedError<T>(result: Promise<T>): Promise<Result<T, string>> {
     }
 }
 "#;
+
+#[tauri::command]
+#[specta::specta]
+pub fn copy_text(app: tauri::AppHandle, text: String) -> Reply<()> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    app.clipboard().write_text(text).map_err(|_| "Could not copy the prompt".into())
+}

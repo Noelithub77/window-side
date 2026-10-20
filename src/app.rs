@@ -38,6 +38,7 @@ fn launch() -> anyhow::Result<()> {
     let online = tray.as_ref().map(|t| t.online.clone());
     let ipc = commands::builder();
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(state)
         .invoke_handler(ipc.invoke_handler())
         .on_window_event(move |window, event| {
@@ -88,8 +89,8 @@ fn poll(app: &tauri::AppHandle, previous: &mut Option<types::Status>) {
     let Ok(mut inner) = state.lock() else { return };
     if inner.listeners == 0 || state.operation.load(Ordering::Relaxed) { return; }
     if let Some(f) = &mut inner.fixture {
-        let status = f.status.clone();
         let metrics = f.metrics();
+        let status = f.status.clone();
         drop(inner);
         if previous.as_ref() != Some(&status) { let _ = app.emit("status", &status); *previous = Some(status); }
         if metrics.available { let _ = app.emit("metrics", metrics); }
