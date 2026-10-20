@@ -42,7 +42,7 @@ export const build: Build = (svg, narrow) => {
     appWindow(s, cx + 88, cy - 92, 132, 92, "", { stroke: ink.lavender });
     panes(s, cx + 88, cy - 84, 34);
     s.text(cx + 88, cy - 152, "or beside linux", { size: 17, color: ink.lavender });
-    s.text(cx, cy + 160, "one install,\ntwo ways in", { size: 21, color: ink.mint });
+    s.text(cx, cy + 160, "the same windows,\ntwo ways in", { size: 21, color: ink.mint });
   });
   const native = s.arrow([[cx + 40, cy + 46], [cx - 30, cy + 8], [cx - 88, cy - 54]], { stroke: ink.mint, width: 1.8 });
   const vm = s.arrow([[cx + 72, cy + 46], [cx + 82, cy + 4], [cx + 88, cy - 40]], { stroke: ink.lavender, width: 1.8 });

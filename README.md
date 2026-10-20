@@ -10,7 +10,7 @@
   <a href="https://github.com/Noelithub77/window-side/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Noelithub77/window-side?style=flat&amp;color=c4fbec&amp;labelColor=101515"></a>
 </p>
 
-Run the Windows already on your dual-boot drive as a virtual machine inside Linux, and still boot it natively when you need to. One install, one set of apps and files.
+Not a new VM: the same Windows you already dual boot, now in a window on Linux. It still boots natively too.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Noelithub77/window-side/main/get.sh | bash
