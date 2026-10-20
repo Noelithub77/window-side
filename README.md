@@ -49,10 +49,9 @@ cd window-side
 ws
 ```
 
-The source installer builds with the checked-in Cargo lockfile. Build tools on
-Arch are `base-devel`, `rust`, `clang`, `cmake`, `pkgconf`, `libxcb`,
-`libxkbcommon`, `libxkbcommon-x11`, `fontconfig`, `wayland`, `vulkan-headers`
-and `vulkan-icd-loader`. A working Vulkan driver is needed for the window.
+The source installer builds with the checked-in Cargo lockfile. Source builds
+need Rust, Node.js, pnpm and the Tauri WebKitGTK/GTK development packages;
+`scripts/system-deps.sh --build` prints the exact command for your distro.
 
 The installer puts the binary and application entry under `~/.local` and
 preserves machine configuration. VM creation and boot entry changes remain in
@@ -221,7 +220,16 @@ JSON evidence.
 `guest:check` requires an already running QEMU guest and reads script syntax,
 VM guards and driver readiness without applying provisioning.
 
-Tag workflows build on Arch, verify the tag against the binary version and
+CI runs only on manual dispatch and `v*` tags to save GitHub Actions minutes;
+branch pushes and pull requests do not start it. Run `./ops check` locally before
+pushing. After pushing to `main`, `./ops ci:run` dispatches and watches debug
+checks; `./ops ci:run --release` checks the optimized build and warms its separate
+cache. These commands require authenticated `gh` and `jq`. Weekly pacman packages,
+the lockfile-keyed pnpm store and Rust dependencies/builds are cached. Tags restore
+default-branch caches without saving tag-only entries. Warm the release cache
+manually before tagging when dependencies change.
+
+Tag runs build on Arch, verify the tag against the binary version and
 create a **draft prerelease** with the archive and checksum. Release promotion
 and AUR publication remain manual. Packaging refuses dirty source unless
 `--allow-dirty` explicitly marks a local preview. See `plan/v1/` for decisions,

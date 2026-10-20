@@ -15,6 +15,7 @@ Usage: ./ops <command>
   gui:smoke --output DIR  Real WebKitGTK fixture smoke in OmaBox
   check                 Run unit tests, Clippy and CLI/installer fixtures; no VM or desktop actions
   check:release         Run those checks against the optimized release
+  ci:run [--release]    Dispatch CI on main and watch it; --release warms the release cache
   test:install          Check installer changes inside a temporary prefix
   release:build         Build the optimized ws binary with the locked dependencies
   release:package --output DIR  Archive the release binary, installer and checksums
@@ -56,6 +57,7 @@ HELP
     WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/packages.sh"
     exec bash "$root/tests/install.sh"
     ;;
+  ci:run) shift; exec bash "$root/scripts/ci-run.sh" "$@" ;;
   test:install) exec bash "$root/tests/install.sh" ;;
   release:build) pnpm -C ui install --frozen-lockfile; pnpm -C ui build; exec cargo build --release --locked -j 2 ;;
   release:package) shift; exec bash "$root/scripts/package-release.sh" "$@" ;;

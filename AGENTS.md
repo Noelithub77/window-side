@@ -47,6 +47,7 @@ plan/                    design notes (`tauri-app` is current)
 Use `./ops --help` first; prefer it over one-off scripts.
 
 - `./ops check`: unit tests, Clippy, CLI, first-boot, plugin and installer fixtures. Run after every change.
+- `./ops ci:run [--release]`: dispatch CI on GitHub `main` and watch it; authenticated `gh` and `jq` required. `--release` warms the optimized cache.
 - `./ops ui:check`: TypeScript, strict oxlint (`--type-aware --deny-warnings`) and Vite build.
 - `./ops ui:bindings` regenerates bindings; `ui:bindings:check` fails on drift.
 - `./ops ui:test`: Chromium interaction tests against the built UI.
@@ -54,6 +55,10 @@ Use `./ops --help` first; prefer it over one-off scripts.
 - `./ops gui:installed --binary FILE --output DIR`: an installed binary in a fresh OmaBox HOME.
 - `./ops guest:check`: read-only checks in a running Windows guest. Never start the VM just for a check without asking.
 - `./ops dev`: build and replace this checkout's development app.
+
+CI is manual and `v*` tag-only to save minutes. Run `./ops check` locally before
+pushing; branch pushes and pull requests do not trigger CI. Debug and release
+Rust caches are separate; manual release runs warm the default-branch cache for tags.
 
 ## Rules
 

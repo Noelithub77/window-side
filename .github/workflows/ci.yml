@@ -1,0 +1,116 @@
+name: CI
+run-name: ${{ github.ref_type == 'tag' && 'Draft release' || (inputs.release && 'Release cache' || 'Debug checks') }}
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Build the optimized release and warm its cache
+        type: boolean
+        default: false
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 45
+    steps:
+      - name: Select weekly package cache
+        id: week
+        run: echo "key=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore pacman packages
+        id: pacman
+        uses: actions/cache/restore@v6
+        with:
+          path: /var/cache/pacman/pkg
+          key: arch-pacman-${{ steps.week.outputs.key }}
+          restore-keys: arch-pacman-
+      - name: Install build and fixture tools
+        run: |
+          pacman -Syu --noconfirm --needed git rust pkgconf webkit2gtk-4.1 gtk3 openssl nodejs pnpm jq ripgrep desktop-file-utils
+          pacman -Sc --noconfirm
+      - name: Save installed pacman packages
+        if: github.ref_type != 'tag' && steps.pacman.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /var/cache/pacman/pkg
+          key: ${{ steps.pacman.outputs.cache-primary-key }}
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Locate pnpm store
+        id: pnpm
+        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+      - name: Restore pnpm store
+        id: pnpm-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ steps.pnpm.outputs.path }}
+          key: arch-pnpm-${{ hashFiles('ui/pnpm-lock.yaml') }}
+          restore-keys: arch-pnpm-
+      - run: pnpm -C ui install --frozen-lockfile
+      - name: Save pnpm store
+        if: github.ref_type != 'tag' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.pnpm.outputs.path }}
+          key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: arch-${{ (github.ref_type == 'tag' || inputs.release) && 'release' || 'debug' }}
+          cache-workspace-crates: true
+          save-if: ${{ github.ref_type != 'tag' }}
+      - name: Check the selected profile
+        env:
+          RELEASE: ${{ github.ref_type == 'tag' || inputs.release }}
+        run: |
+          if [ "$RELEASE" = true ]; then
+            ./ops check:release
+          else
+            ./ops check
+          fi
+      - name: Validate tag and package the exact source
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          test "$TAG" = "v$(target/release/ws --version | cut -d ' ' -f 2)"
+          ./ops release:package --output "$RUNNER_TEMP/window-side-release"
+      - name: Upload release package
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: window-side-release
+          path: ${{ runner.temp }}/window-side-release/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+  release:
+    if: github.ref_type == 'tag'
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: packaging/release-notes.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: window-side-release
+          path: ${{ runner.temp }}/window-side-release
+      - name: Create a draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$TAG" "$RUNNER_TEMP/window-side-release/"* --verify-tag --draft --prerelease --title "window-side $TAG" --notes-file packaging/release-notes.md
