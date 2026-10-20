@@ -45,7 +45,13 @@ The installer puts the binary and application entry under `~/.local` and
 preserves machine configuration. It does not start a VM, install packages or
 change boot entries. The setup window detects Windows partitions and graphics,
 lets you choose resources, and reviews machine changes before administrator
-approval. GPU boot profiles currently use Limine on Arch/Omarchy.
+approval. GPU boot profiles support Limine with mkinitcpio, Ubuntu/Debian GRUB with
+initramfs-tools, Fedora GRUB with dracut/BLS, and systemd-boot Type 1 entries.
+Detection needs a readable entry for the running kernel; unreadable boot files,
+unsupported unified images or missing tools disable the GPU choice. New paths
+are fixture-tested only; real initramfs generation and reboots remain unverified.
+GRUB and systemd-boot twins refer to the running kernel: rerun setup after
+changing kernels before selecting that GPU profile.
 
 Useful installer options:
 

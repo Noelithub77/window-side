@@ -2,7 +2,7 @@
 //! installs known packages and adds the invoking user to the VM groups.
 use crate::detect::distro::Family;
 use crate::process::{output, text, text_with_input};
-use crate::setup::files::{self, ALLOWED, GPU_ENTRY, SystemFile};
+use crate::setup::files::{self, GPU_ENTRY, SystemFile};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -41,14 +41,22 @@ pub struct RootPlan {
     pub virtual_disk: Option<VirtualDisk>,
     /// Kernel package whose image gets a GPU passthrough twin in Limine.
     pub gpu_kernel: Option<String>,
+    pub boot_profile: Option<crate::detect::boot::BootProfile>,
 }
 
 impl RootPlan {
     /// Rejects anything outside what setup can legitimately ask for.
     pub fn validate(&self) -> Result<()> {
-        if let Some(file) = self.files.iter().find(|file| !ALLOWED.contains(&file.path.as_str())) {
+        if let Some(file) = self.files.iter().find(|file| !files::allowed_path(&file.path, self.boot_profile.as_ref())) {
             bail!("Refusing to write {}", file.path);
         }
+        if let Some(boot) = &self.boot_profile {
+            super::boot::validate(boot)?;
+            if self.gpu_kernel.is_some() != (boot.loader == crate::detect::boot::Loader::Limine) {
+                bail!("Inconsistent boot profile");
+            }
+        }
+        if self.files.iter().any(|file| !matches!(file.mode, 0o644 | 0o755)) { bail!("Invalid system file mode"); }
         if let Some(package) = self.packages.iter().find(|package| !self.distro.is_some_and(|family| family.known(package))) {
             bail!("Refusing to install {package}");
         }
@@ -83,6 +91,10 @@ pub fn apply(plan_path: &Path) -> Result<()> {
     let plan: RootPlan = serde_json::from_str(&fs::read_to_string(plan_path)?).context("Invalid setup plan")?;
     plan.validate()?;
     verify_caller(&plan.user)?;
+    if let Some(boot) = &plan.boot_profile
+        && crate::detect::boot::detect().as_ref() != Some(boot) {
+            bail!("Boot configuration changed or is unreadable; create a new setup plan");
+    }
     if let Some(family) = plan.distro.filter(|_| !plan.packages.is_empty()) {
         install(family, &plan.packages)?;
     }
@@ -105,7 +117,7 @@ pub fn apply(plan_path: &Path) -> Result<()> {
     let _ = output("systemd-tmpfiles", &["--create", files::TMPFILES_CONF]);
     let entries = match &plan.gpu_kernel {
         Some(kernel) => Some(add_gpu_entry(kernel)?),
-        None => None,
+        None => plan.boot_profile.as_ref().map(super::boot::apply).transpose()?,
     };
     println!("{}", json!({"normalEntry": entries.as_ref().map(|e| &e.0), "gpuEntry": entries.as_ref().map(|e| &e.1)}));
     Ok(())
@@ -126,6 +138,9 @@ fn install(family: Family, packages: &[String]) -> Result<()> {
 
 fn write(file: &SystemFile) -> Result<()> {
     let path = Path::new(&file.path);
+    if path.ancestors().any(|parent| parent.symlink_metadata().is_ok_and(|meta| meta.file_type().is_symlink())) {
+        bail!("Refusing to write through a symlink: {}", file.path);
+    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -267,7 +282,7 @@ mod tests {
         let plan = RootPlan {
             user: "noel".into(), distro: Some(Family::Arch), packages: vec!["libvirt".into()], groups: vec!["libvirt".into()],
             files: vec![SystemFile { path: files::TMPFILES_CONF.into(), contents: String::new(), mode: 0o644 }],
-            virtual_disk: None, gpu_kernel: Some("linux-omarchy".into()),
+            virtual_disk: None, gpu_kernel: Some("linux-omarchy".into()), boot_profile: None,
         };
         assert!(plan.validate().is_ok());
         let bad_file = RootPlan { files: vec![SystemFile { path: "/etc/sudoers".into(), contents: String::new(), mode: 0o644 }], ..plan.clone() };

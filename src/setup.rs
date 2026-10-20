@@ -1,4 +1,5 @@
 //! Turns detected hardware and a few choices into the VM, its config and the system files.
+pub mod boot;
 pub mod domain;
 pub mod files;
 pub mod root;
@@ -50,7 +51,7 @@ pub struct Choices {
 
 impl Inventory {
     pub fn usable_gpus(&self) -> impl Iterator<Item = &DetectedGpu> {
-        let bootable = self.system.limine_kernel.is_some();
+        let bootable = self.system.boot_profile.is_some();
         self.gpus.iter().filter(move |gpu| bootable && matches!(gpu.blocker, None | Some(Blocker::IommuOff)))
     }
 
@@ -134,6 +135,9 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
     }
     let system = &inventory.system;
     let mut notes = Vec::new();
+    if system.boot_profile.is_none() {
+        notes.push("No GPU profile on this boot loader: the running entry or initramfs tool is unavailable.".into());
+    }
     let disk = match install.mode {
         DiskMode::Whole => Disk {
             mode: DiskMode::Whole,
@@ -185,12 +189,17 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
 
     let mut files = Vec::new();
     let mut gpu_kernel = None;
-    if let (Some(gpu), Some(kernel)) = (gpu, &system.limine_kernel) {
+    if let (Some(gpu), Some(profile)) = (gpu, &system.boot_profile) {
         let current = fs::read_to_string("/proc/cmdline").context("Could not read the kernel command line")?;
         let cmdline = files::gpu_cmdline(&current, system.iommu_flag, &gpu.ids, gpu.driver.as_deref());
-        files.extend(files::gpu_files(&cmdline, system.iommu_flag, kernel));
+        let modules = match fs::read_to_string(boot::INITRAMFS_MODULES) {
+            Ok(modules) => modules,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(error).context("Could not preserve the initramfs module list"),
+        };
+        files.extend(boot::generate(profile, &cmdline, system.iommu_flag, &modules)?);
         files.push(files::looking_glass_file(&system.user));
-        gpu_kernel = Some(kernel.clone());
+        gpu_kernel = (profile.loader == crate::detect::boot::Loader::Limine).then(|| profile.kernel.clone());
         if gpu.blocker == Some(Blocker::IommuOff) {
             notes.push("IOMMU turns on after the next reboot; the GPU is checked again then.".into());
         }
@@ -220,7 +229,7 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
     let packages = packages(system)?;
     let member_of = text("id", &["-nG", &system.user]).unwrap_or_default();
     let groups = ["libvirt", "kvm"].iter().filter(|group| !member_of.split_whitespace().any(|name| name == **group)).map(|group| (*group).to_owned()).collect();
-    let root = RootPlan { user: system.user.clone(), distro: system.distro, packages, groups, files, virtual_disk, gpu_kernel };
+    let root = RootPlan { user: system.user.clone(), distro: system.distro, packages, groups, files, virtual_disk, gpu_kernel, boot_profile: gpu.and(system.boot_profile.clone()) };
     root.validate()?;
     Ok(Plan { config, domain_xml, root, plugin: choices.plugin, notes })
 }

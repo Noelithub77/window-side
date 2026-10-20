@@ -10,7 +10,18 @@ pub const DISK_SCRIPT: &str = "/usr/local/lib/window-side/virtual-disk";
 pub const DISK_SERVICE: &str = "/etc/systemd/system/window-side-disk.service";
 pub const GPU_ENTRY: &str = "window-side-gpu";
 
-pub const ALLOWED: &[&str] = &[LIMINE_CONF, MKINITCPIO_CONF, PACMAN_HOOK, TMPFILES_CONF, UDEV_RULE, DISK_SCRIPT, DISK_SERVICE];
+pub const ALLOWED: &[&str] = &[LIMINE_CONF, MKINITCPIO_CONF, PACMAN_HOOK, TMPFILES_CONF, UDEV_RULE, DISK_SCRIPT, DISK_SERVICE,
+    super::boot::GRUB_SCRIPT, super::boot::GRUB_DEFAULTS, super::boot::INITRAMFS_MODULES, super::boot::DRACUT_CONF,
+    "/boot/loader/entries/window-side-gpu.conf", "/boot/efi/loader/entries/window-side-gpu.conf", "/efi/loader/entries/window-side-gpu.conf"];
+
+// Only the detected original entry may be edited inside these explicit BLS roots.
+pub const ALLOWED_BLS_ENTRY_DIRS: &[&str] = &["/boot/loader/entries", "/boot/efi/loader/entries", "/efi/loader/entries"];
+
+pub fn allowed_path(path: &str, boot: Option<&crate::detect::boot::BootProfile>) -> bool {
+    ALLOWED.contains(&path) || boot.is_some_and(|boot| boot.source == path
+        && crate::detect::boot::bls_path(path)
+        && std::path::Path::new(path).parent().is_some_and(|parent| ALLOWED_BLS_ENTRY_DIRS.iter().any(|allowed| parent == std::path::Path::new(allowed))))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SystemFile {
@@ -29,18 +40,30 @@ pub fn gpu_cmdline(current: &str, iommu_flag: &str, ids: &[String], driver: Opti
         token.starts_with("BOOT_IMAGE=")
             || token.starts_with("vfio-pci.ids=")
             || token.starts_with("rd.driver.pre=vfio")
-            || token.starts_with("modprobe.blacklist=")
             || token.starts_with("intel_iommu=")
             || token.starts_with("amd_iommu=")
             || token.starts_with("iommu=")
     };
-    let mut tokens: Vec<String> = current.split_whitespace().filter(|token| !ours(token)).map(str::to_owned).collect();
+    let mut tokens: Vec<String> = current.split_whitespace().filter(|token| !ours(token)).filter_map(|token| {
+        if let Some(blacklist) = token.strip_prefix("modprobe.blacklist=") {
+            let retained = blacklist.split(',').filter(|module| !["nvidia", "nvidia_drm", "nvidia_modeset", "nvidia_uvm", "nouveau"].contains(module)).collect::<Vec<_>>();
+            return (!retained.is_empty()).then(|| format!("modprobe.blacklist={}", retained.join(",")));
+        }
+        Some(token.to_owned())
+    }).collect();
     tokens.extend([iommu_flag.to_owned(), "iommu=pt".to_owned(), format!("vfio-pci.ids={}", ids.join(",")), "rd.driver.pre=vfio-pci".to_owned()]);
     // NVIDIA's driver grabs the GPU before vfio-pci unless it is kept out of this boot.
     if matches!(driver, Some("nvidia" | "nouveau")) {
         tokens.push("modprobe.blacklist=nvidia,nvidia_drm,nvidia_modeset,nvidia_uvm,nouveau".to_owned());
     }
     tokens.join(" ")
+}
+
+/// Normal profile keeps all unrelated kernel arguments and only our IOMMU flags.
+pub fn normal_cmdline(current: &str, iommu_flag: &str) -> String {
+    gpu_cmdline(current, iommu_flag, &[], None).split_whitespace()
+        .filter(|token| !token.starts_with("vfio-pci.ids=") && !token.starts_with("rd.driver.pre=vfio"))
+        .collect::<Vec<_>>().join(" ")
 }
 
 /// Limine names unified kernel images `<os>_<kernel>.efi` under the ESP.

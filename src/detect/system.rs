@@ -1,10 +1,9 @@
 //! CPU, memory, boot loader and tool facts that shape the VM and the GPU boot profile.
 use super::distro::{self, Family};
 use crate::display::desktop;
-use crate::process::{has_command, text};
+use crate::process::has_command;
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,7 +16,8 @@ pub struct System {
     pub memory_mib: u64,
     pub iommu_enabled: bool,
     pub iommu_flag: &'static str,
-    /// Kernel package of the running kernel, when the boot loader can get a GPU entry.
+    pub boot_profile: Option<super::boot::BootProfile>,
+    /// Legacy Limine kernel field for existing UI consumers.
     pub limine_kernel: Option<String>,
     pub refresh_hz: String,
     pub user: String,
@@ -62,20 +62,10 @@ fn memory_mib() -> u64 {
         .map_or(0, |kib| kib / 1024)
 }
 
-fn limine_kernel() -> Option<String> {
-    // /boot is root-only on Omarchy, so look for Limine's readable config instead.
-    if !has_command("limine-entry-tool") || !Path::new("/etc/default/limine").exists() {
-        return None;
-    }
-    let release = fs::read_to_string("/proc/sys/kernel/osrelease").ok()?;
-    let vmlinuz = format!("/usr/lib/modules/{}/vmlinuz", release.trim());
-    // Limine GPU profiles use mkinitcpio, so the kernel comes from pacman.
-    text("pacman", &["-Qoq", &vmlinuz]).ok().map(|package| package.trim().to_owned()).filter(|package| !package.is_empty())
-}
-
 pub fn detect() -> System {
     let cpuinfo = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
     let family = distro::detect();
+    let boot_profile = super::boot::detect();
     let siblings = read_list("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
     System {
         cpus: read_list("/sys/devices/system/cpu/online"),
@@ -85,7 +75,8 @@ pub fn detect() -> System {
         memory_mib: memory_mib(),
         iommu_enabled: fs::read_dir("/sys/kernel/iommu_groups").is_ok_and(|mut groups| groups.next().is_some()),
         iommu_flag: if cpuinfo.contains("AuthenticAMD") { "amd_iommu=on" } else { "intel_iommu=on" },
-        limine_kernel: limine_kernel(),
+        limine_kernel: boot_profile.as_ref().filter(|boot| boot.loader == super::boot::Loader::Limine).map(|boot| boot.kernel.clone()),
+        boot_profile,
         refresh_hz: desktop::refresh_rate(),
         user: std::env::var("USER").unwrap_or_default(),
         omarchy: has_command("omarchy"),

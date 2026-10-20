@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-/// Which Limine entry the host booted: `gpu` hands the GPU to vfio-pci for Windows.
+/// Which boot entry the host booted: `gpu` hands the GPU to vfio-pci for Windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Profile {
@@ -103,13 +103,28 @@ pub fn valid_pci_address(address: &str) -> bool {
         if hex(domain, 4) && hex(bus, 2) && hex(slot, 2) && function.len() == 1 && ('0'..='7').contains(&function.chars().next().unwrap_or('8')))
 }
 
-/// Limine entry titles look like `Omarchy/linux-omarchy`; nothing else reaches the root edit.
+/// Tagged one-shot IDs or legacy Limine titles; neither can supply command options.
 pub fn valid_entry(entry: &str) -> bool {
+    if let Some((loader, id)) = entry.split_once(':') {
+        return matches!(loader, "grub" | "systemd-boot") && crate::detect::boot::safe_name(id);
+    }
     !entry.is_empty() && entry.chars().all(|c| c.is_ascii_alphanumeric() || " /._-()".contains(c))
 }
 
 /// Root side of `ws reboot`: makes `entry` the default Limine entry, then reboots.
 pub fn reboot_into(entry: &str) -> Result<()> {
+    if let Some((loader, id)) = entry.split_once(':') {
+        if !crate::detect::boot::safe_name(id) { bail!("Invalid boot entry: {entry}"); }
+        match loader {
+            "grub" => {
+                let program = if crate::process::has_command("grub-reboot") { "grub-reboot" } else { "grub2-reboot" };
+                crate::process::text(program, &[id])?;
+                return crate::process::text("systemctl", &["reboot"]).map(drop);
+            }
+            "systemd-boot" => return crate::process::text("systemctl", &["reboot", &format!("--boot-loader-entry={id}")]).map(drop),
+            _ => bail!("Unsupported boot loader: {loader}"),
+        }
+    }
     if !valid_entry(entry) {
         bail!("Invalid boot entry: {entry}");
     }
@@ -170,6 +185,11 @@ mod tests {
         assert_eq!(set_default_entry("timeout: 3\n", "C/d"), "default_entry: C/d\ntimeout: 3\n");
         assert!(!valid_entry("A/b; rm -rf /"));
         assert!(valid_entry("Omarchy/window-side-gpu"));
+        assert!(valid_entry("grub:window-side-gpu"));
+        assert!(valid_entry("systemd-boot:window-side-gpu.conf"));
+        assert!(!valid_entry("grub:--help"));
+        assert!(!valid_entry("grub:../../etc/shadow"));
+        assert!(!valid_entry("other:entry"));
     }
 
     #[test]

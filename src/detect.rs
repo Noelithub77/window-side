@@ -1,3 +1,4 @@
+pub mod boot;
 pub mod disks;
 pub mod distro;
 pub mod gpus;

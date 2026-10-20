@@ -41,7 +41,13 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
 5. Tray. Done: ksni item with state, start, open, shut down, the window
    and quit; closing keeps the app in the tray only while a bar hosts it.
    A second `ws` launch shows the running window over D-Bus.
-6. GRUB and systemd-boot GPU profiles with initramfs-tools and dracut.
+6. GRUB and systemd-boot GPU profiles with initramfs-tools and dracut. Done:
+   running-entry detection, normal/GPU twins, early vfio modules and one-shot
+   selection; Limine keeps its existing tools. Unsupported or unreadable entries
+   disable GPU setup. Fixture files cover each loader and generated command lines.
+   Root writes, initramfs generation and real reboots remain unverified; no boot
+   writer or privileged setup command was run on this host. GRUB/systemd-boot
+   twins stay on the setup kernel and need setup again after kernel changes.
 7. One-command install.
 
 Each step is committed separately with its verification. Ubuntu and Fedora
