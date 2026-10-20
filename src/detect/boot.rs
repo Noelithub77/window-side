@@ -41,14 +41,22 @@ pub fn bls_value<'a>(entry: &'a str, key: &str) -> Option<&'a str> {
     })
 }
 
-pub fn running_bls(entry: &str, release: &str) -> bool {
+pub fn editable_bls(entry: &str) -> bool {
     let linux = bls_value(entry, "linux").unwrap_or_default();
-    // Type 2 UKIs can have a signed embedded command line: do not pretend it is editable.
-    !entry.lines().any(|line| line.trim_start().starts_with("efi "))
-        && (linux.ends_with(&format!("/vmlinuz-{release}"))
-            || (bls_value(entry, "version") == Some(release) && linux.starts_with('/')))
+    // A signed UKI may ignore external options, so only accept a Type 1 kernel/initrd pair.
+    bls_value(entry, "efi").is_none() && linux.starts_with('/') && !linux.ends_with(".efi")
         && bls_value(entry, "initrd").is_some()
         && bls_value(entry, "options").is_some_and(|options| !options.contains('$'))
+}
+
+pub fn running_bls(entry: &str, release: &str) -> bool {
+    let linux = bls_value(entry, "linux").unwrap_or_default();
+    editable_bls(entry) && (linux.ends_with(&format!("/vmlinuz-{release}")) || bls_value(entry, "version") == Some(release))
+}
+
+/// Firmware identifies the selected systemd-boot entry even when its optional version is absent.
+pub fn selected_bls(entry: &str, release: &str) -> bool {
+    editable_bls(entry) && bls_value(entry, "version").is_none_or(|version| version == release)
 }
 
 /// Extract the running kernel's generated menu body, preserving search, modules and initrds.
@@ -77,10 +85,12 @@ pub fn grub_entry(config: &str, release: &str) -> Option<String> {
 }
 
 fn initramfs() -> Option<Initramfs> {
-    if has_command("update-initramfs") { Some(Initramfs::Tools) }
-    else if has_command("dracut") { Some(Initramfs::Dracut) }
-    else if has_command("mkinitcpio") { Some(Initramfs::Mkinitcpio) }
-    else { None }
+    let available = [
+        (Initramfs::Tools, has_command("update-initramfs") && has_command("mkinitramfs")),
+        (Initramfs::Dracut, has_command("dracut")),
+        (Initramfs::Mkinitcpio, has_command("mkinitcpio")),
+    ].into_iter().filter_map(|(flavor, installed)| installed.then_some(flavor)).collect::<Vec<_>>();
+    match available.as_slice() { [flavor] => Some(*flavor), _ => None }
 }
 
 fn selected_systemd() -> Option<String> {
@@ -106,16 +116,16 @@ pub fn detect() -> Option<BootProfile> {
         if !has_command("bootctl") { return None; }
         for root in ["/boot", "/efi", "/boot/efi"] {
             let mut source = format!("{root}/loader/entries/{selected}");
-            let selected_contents = fs::read_to_string(&source).ok();
+            let Ok(selected_contents) = fs::read_to_string(&source) else { continue };
             let mut entry = selected.clone();
             if selected == "window-side-gpu.conf" {
-                let original = selected_contents.as_ref()?.lines().find_map(|line| line.strip_prefix("# window-side-source: "))?;
+                let original = selected_contents.lines().find_map(|line| line.strip_prefix("# window-side-source: "))?;
                 if !safe_name(original) || original == selected { return None; }
                 source = format!("{root}/loader/entries/{original}");
                 entry = original.into();
             }
             if let Ok(contents) = fs::read_to_string(&source)
-                && running_bls(&contents, &release) {
+                && selected_bls(&contents, &release) {
                     return Some(BootProfile { loader: Loader::SystemdBoot, initramfs, kernel: release, source, entry, contents });
             }
         }

@@ -1,5 +1,5 @@
 //! Generates boot files from the detected running entry, without touching the host.
-use crate::detect::boot::{BootProfile, Initramfs, Loader, bls_path, running_bls, safe_name};
+use crate::detect::boot::{BootProfile, Initramfs, Loader, bls_path, bls_value, running_bls, safe_name, selected_bls};
 use crate::setup::files::{self, SystemFile};
 use anyhow::{Result, bail};
 
@@ -14,11 +14,16 @@ pub fn validate(profile: &BootProfile) -> Result<()> {
         (Loader::Limine, Initramfs::Mkinitcpio) => profile.source == "/etc/default/limine" && profile.contents.is_empty(),
         (Loader::Grub, Initramfs::Tools) => profile.source == "/boot/grub/grub.cfg" && profile.entry == "window-side-normal"
             && !profile.contents.contains("\nWS_BOOT_ENTRY\n") && !profile.contents.contains("menuentry "),
-        (Loader::Grub, Initramfs::Dracut) | (Loader::SystemdBoot, _) => bls_path(&profile.source)
+        (Loader::Grub, Initramfs::Dracut) => bls_path(&profile.source)
             && safe_name(&profile.entry) && running_bls(&profile.contents, &profile.kernel),
+        (Loader::SystemdBoot, _) => bls_path(&profile.source)
+            && safe_name(&profile.entry) && selected_bls(&profile.contents, &profile.kernel),
         _ => false,
     };
     if !valid { bail!("Unsupported boot entry; no GPU profile on this boot loader"); }
+    if bls_path(&profile.source) && profile.initramfs != Initramfs::Mkinitcpio {
+        initrd_path(profile)?;
+    }
     Ok(())
 }
 
@@ -84,14 +89,48 @@ pub fn generate(profile: &BootProfile, gpu_cmdline: &str, iommu: &str, current_m
     Ok(files)
 }
 
-/// Rebuild the detected initramfs only, then register the twin with the loader.
+/// Output image on the same boot filesystem as its BLS entry; microcode initrds stay intact.
+fn initrd_path(profile: &BootProfile) -> Result<std::path::PathBuf> {
+    use std::path::{Component, Path};
+    let entry_root = Path::new(&profile.source).parent().and_then(Path::parent).and_then(Path::parent)
+        .ok_or_else(|| anyhow::anyhow!("Missing BLS boot filesystem"))?;
+    let initrd = profile.contents.lines().filter_map(|line| bls_value(line, "initrd"))
+        .next_back().ok_or_else(|| anyhow::anyhow!("Missing BLS initrd"))?;
+    if !initrd.starts_with('/') || initrd.split_whitespace().count() != 1
+        || Path::new(initrd).components().any(|component| !matches!(component, Component::RootDir | Component::Normal(_))) {
+        bail!("Unsupported BLS initrd path");
+    }
+    Ok(entry_root.join(initrd.trim_start_matches('/')))
+}
+
+fn rebuild(profile: &BootProfile) -> Result<()> {
+    use crate::process::text;
+    if profile.source == "/boot/grub/grub.cfg" {
+        text("update-initramfs", &["-u", "-k", &profile.kernel])?;
+        return Ok(());
+    }
+    match profile.initramfs {
+        Initramfs::Mkinitcpio => { text("mkinitcpio", &["-P"])?; }
+        Initramfs::Tools | Initramfs::Dracut => {
+            let image = initrd_path(profile)?;
+            if image.ancestors().any(|path| path.symlink_metadata().is_ok_and(|meta| meta.file_type().is_symlink())) {
+                bail!("Refusing to rebuild an initrd through a symlink");
+            }
+            let image = image.to_string_lossy();
+            match profile.initramfs {
+                Initramfs::Tools => { text("mkinitramfs", &["-o", &image, &profile.kernel])?; }
+                Initramfs::Dracut => { text("dracut", &["--force", "--kver", &profile.kernel, &image])?; }
+                Initramfs::Mkinitcpio => bail!("mkinitcpio uses its presets"),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Rebuilds the initramfs referenced by the detected entry, then registers the GPU twin.
 pub fn apply(profile: &BootProfile) -> Result<(String, String)> {
     use crate::process::text;
-    match profile.initramfs {
-        Initramfs::Tools => { text("update-initramfs", &["-u", "-k", &profile.kernel])?; }
-        Initramfs::Dracut => { text("dracut", &["--force", "--kver", &profile.kernel])?; }
-        Initramfs::Mkinitcpio => { text("mkinitcpio", &["-P"])?; }
-    }
+    rebuild(profile)?;
     match profile.loader {
         Loader::Grub if profile.initramfs == Initramfs::Tools => {
             text("update-grub", &[])?;
@@ -153,6 +192,21 @@ mod tests {
                 assert!(normal.contains(line)); assert!(gpu.contains(line));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn selected_bls_allows_optional_version_and_rebuilds_the_referenced_initrd() -> Result<()> {
+        let fixture = include_str!("../../tests/fixtures/boot/systemd-no-version.conf");
+        assert!(selected_bls(fixture, "6.15.1-arch1-1"));
+        assert!(!running_bls(fixture, "6.15.1-arch1-1"));
+        assert!(!selected_bls(&format!("{fixture}version other-kernel\n"), "6.15.1-arch1-1"));
+        let boot = profile(Loader::SystemdBoot, Initramfs::Mkinitcpio, "/efi/loader/entries/linux.conf", "6.15.1-arch1-1", fixture);
+        assert!(generate(&boot, GPU, "intel_iommu=on", "").is_ok());
+        assert_eq!(initrd_path(&boot)?, std::path::Path::new("/efi/initramfs-linux.img"));
+        let bad = BootProfile { contents: fixture.replace("/initramfs-linux.img", "/../../etc/evil"), ..boot };
+        assert!(initrd_path(&bad).is_err());
+        assert!(validate(&BootProfile { initramfs: Initramfs::Dracut, ..bad }).is_err());
         Ok(())
     }
 
