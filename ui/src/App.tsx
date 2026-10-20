@@ -31,7 +31,7 @@ function useMood(): Mood {
   return status.bootProfile === "gpu" ? "gpu" : "live"
 }
 
-const PAGES: Record<Exclude<View, "loading">, () => React.JSX.Element> = {
+const PAGES: Record<Exclude<View, "loading">, () => React.JSX.Element | null> = {
   welcome: Welcome,
   setup: Setup,
   "first-boot": FirstBoot,
