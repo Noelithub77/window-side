@@ -5,6 +5,7 @@ import { defineConfig } from "vite"
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: { port: 5199, strictPort: true },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

@@ -40,7 +40,7 @@ inside() { omabox run -b "$box" -- "$@"; }
 bus() { inside busctl --user --json=short "$@"; }
 start() {
   omabox run -b "$box" -d -- sh -c 'exec "$HOME/.local/bin/ws"'
-  omabox wait -b "$box" --timeout 30s window class:window-side >/dev/null
+  omabox wait -b "$box" --timeout 30s window class:ws >/dev/null
 }
 state() {
   local label=$1
@@ -49,9 +49,9 @@ state() {
   local count
   count=$(inside sh -c 'pgrep -xc ws || true')
   jq -n --argjson processes "$count" --slurpfile clients "$output/$label-clients.json" \
-    '{processes:$processes, windows:([$clients[0][] | select(.class == "window-side")] | length)}' > "$output/$label-state.json"
+    '{processes:$processes, windows:([$clients[0][] | select(.class == "ws")] | length)}' > "$output/$label-state.json"
 }
-shot() { omabox shot -b "$box" --window class:window-side -o "$output/$1.png" >/dev/null; }
+shot() { omabox shot -b "$box" --window class:ws -o "$output/$1.png" >/dev/null; }
 wait_exit() { omabox wait -b "$box" --timeout 15s cmd -- sh -c '! pgrep -x ws >/dev/null' >/dev/null; }
 
 stage=stock-bar-start
@@ -82,13 +82,13 @@ state stock-bar-open
 jq -e '.processes == 1 and .windows == 1' "$output/stock-bar-open-state.json" >/dev/null
 shot stock-bar-open
 stage=stock-bar-close
-omabox keys -b "$box" --window class:window-side super+w
-omabox wait -b "$box" --timeout 15s window class:window-side --gone >/dev/null
+omabox keys -b "$box" --window class:ws super+w
+omabox wait -b "$box" --timeout 15s window class:ws --gone >/dev/null
 state stock-bar-closed
 jq -e '.processes == 1 and .windows == 0' "$output/stock-bar-closed-state.json" >/dev/null
 stage=stock-bar-activate
 bus call "$service" "$item_path" org.kde.StatusNotifierItem Activate ii 0 0 > "$output/activate.txt"
-omabox wait -b "$box" --timeout 15s window class:window-side >/dev/null
+omabox wait -b "$box" --timeout 15s window class:ws >/dev/null
 state stock-bar-reopened
 jq -e '.processes == 1 and .windows == 1' "$output/stock-bar-reopened-state.json" >/dev/null
 shot stock-bar-reopened
@@ -109,7 +109,7 @@ start
 state no-host-open
 jq -e '.processes == 1 and .windows == 1' "$output/no-host-open-state.json" >/dev/null
 stage=no-host-close
-omabox keys -b "$box" --window class:window-side super+w
+omabox keys -b "$box" --window class:ws super+w
 wait_exit
 state no-host-closed
 jq -e '.processes == 0 and .windows == 0' "$output/no-host-closed-state.json" >/dev/null
@@ -120,6 +120,6 @@ inside sh -c 'timeout 15s "$HOME/.local/bin/ws"; result=$?; printf "%s\n" "$resu
 state no-host-second-launch
 jq -e '.processes == 1 and .windows == 1' "$output/no-host-second-launch-state.json" >/dev/null
 shot no-host-second-launch
-omabox keys -b "$box" --window class:window-side super+w
+omabox keys -b "$box" --window class:ws super+w
 wait_exit
 stage=complete
