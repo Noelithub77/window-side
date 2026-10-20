@@ -23,7 +23,7 @@ guest and desktop code stay in Rust unchanged; the GUI only calls them.
 - **[chosen]** Tests: Playwright against the Vite build with mocked IPC for
   interaction (roles and labels, no OCR); one OmaBox smoke run of the real
   binary for WebKitGTK rendering.
-- Lint: `tsc` and strict type-checked ESLint. Generated shadcn primitives in
+- Lint: `tsc` and strict type-aware oxlint (`--deny-warnings`). Generated shadcn primitives in
   `ui/src/components/ui` are vendored and not linted. No formatter.
 
 ## Ownership
@@ -38,10 +38,23 @@ guest and desktop code stay in Rust unchanged; the GUI only calls them.
 ## Steps
 
 1. Scaffold `ui/` with Luma and all components. Done.
-2. Rust: Tauri builder, commands and events per the contract, fixture mode,
-   tray and instance wiring, bindings.
+2. Rust: implemented Tauri builder, contract commands and events, isolated
+   in-memory fixtures, ksni tray and zbus instance wiring. Bindings generate
+   in a Rust test; stale output fails `./ops ui:bindings:check`. Native build, binding drift check, 40 Rust tests and strict Clippy passed.
+   WebKitGTK clipboard writes use the official clipboard-manager fallback.
+   Tauri is pinned to stable 2.12.4; Specta 2 and tauri-specta 2 are pinned
+   to matching rc.25 releases because v2 has no stable release yet.
 3. UI: design system, welcome, setup, overview, settings, first boot.
-4. Packaging: WebKitGTK runtime per distro, Node and pnpm for source builds,
-   AUR, release archive.
-5. Tests and `./ops`: `ui:dev`, `ui:check`, Playwright, OmaBox smoke.
-6. Remove GPUI and `gpui-kit`; update README and AGENTS.md.
+4. Packaging: implemented WebKitGTK 4.1 runtime/bootstrap and development
+   package commands for Arch, Debian/Ubuntu and Fedora. Source installs and
+   the Arch recipe build React before Cargo; release archives include the
+   runtime dependency helper. Real package transactions remain unverified.
+5. Tests and `./ops`: implemented `ui:dev`, `ui:check`, `ui:bindings`,
+   `ui:bindings:check`, `ui:test` and `gui:smoke`. Chromium covers setup/apply/first boot, overview launch/shutdown and settings
+   navigation. Native OmaBox smoke passed WebGL, Lottie pixels and clipboard
+   with no browser errors. Tray tests passed registration, close/reopen, quit
+   without a tray host and second-launch single-instance behavior.
+   `./ops check` passed including package and installer fixtures.
+6. Removed GPUI views and `gpui-kit`; retained tray and instance logic under
+   `src/app/`. Updated README and AGENTS.md for the Rust/React ownership and
+   oxlint workflow.

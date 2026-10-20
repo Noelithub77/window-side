@@ -149,12 +149,10 @@ runs. Disk and GPU values change system files, so they stay with
 
 ## Agent access
 
-The welcome screen can hand setup to a local agent. "Set up with an agent"
-lists Claude Code, Codex and OpenCode when installed and opens the chosen one
-in a terminal (`xdg-terminal-exec`, then the desktop's own terminal) with
-[`assets/agent-setup.md`](assets/agent-setup.md) as its first prompt. "Copy
-prompt" puts the same text on the clipboard for an agent elsewhere. The prompt
-keeps the agent read-only until you approve `ws setup apply`.
+The welcome screen detects Claude Code, Codex and OpenCode when installed.
+Selecting one copies [`assets/agent-setup.md`](assets/agent-setup.md) so it can
+be pasted into that agent. The command does not launch a terminal or agent.
+The prompt keeps the agent read-only until you approve `ws setup apply`.
 
 ```sh
 ws --help
@@ -184,24 +182,42 @@ looking-glass-setup` installs the guest side. Host reboot is explicit.
 
 ## Development and release
 
-Run `./ops dev` to build and open the development app. Re-run it after edits
-to replace the previous development instance from this checkout; a failed build
-keeps that instance running. Installed apps and CLI commands are left running.
-The tracked `t3.json` declares the same command as the **Dev** action. Import it
-once through T3 Code’s Settings → Project → Actions → Import scripts.
+The desktop is a Tauri 2 WebKitGTK window with a React UI in `ui/`.
+The same `ws` binary embeds the built UI and retains every JSON CLI command.
+The existing ksni tray and D-Bus single-instance service stay in Rust.
+
+Source builds need Rust, Node.js 22.12 or newer, pnpm and the system development packages:
 
 ```sh
+bash scripts/system-deps.sh --build  # prints the exact distro install command
+pnpm -C ui install --frozen-lockfile
+./ops ui:check
+./ops build
 ./ops check
-./ops check:release
-./ops gui:test --output /tmp/window-side-ui-check
-./ops gui:installed --binary /absolute/ws --output /tmp/window-side-installed-check
-./ops guest:check
-./ops release:package --output /absolute/new-release-directory
+./ops ui:test
+./ops gui:smoke --output /tmp/window-side-tauri-check
 ```
 
-CLI fixtures fake libvirt and the guest agent. GUI fixtures use synthetic
-hardware in an invisible OmaBox with guest/setup actions disabled. The installed
-GUI check uses a fresh box HOME and only checks the welcome screen and quit.
+`./ops ui:dev` runs Vite on 5199. To open the development webview explicitly,
+run `./ops ui:dev --window` inside OmaBox with the Vite server reachable at
+5199. Ordinary `./ops dev` builds the embedded UI and opens the app; agents
+must run it inside OmaBox. `./ops ui:bindings` generates typed IPC from a Rust
+test, and `./ops ui:bindings:check` rejects stale output. No code generation
+runs during app startup. Lint uses strict type-aware oxlint, with no formatter.
+
+Runtime packages are WebKitGTK 4.1 and GTK 3 (`webkit2gtk-4.1` on Arch,
+`libwebkit2gtk-4.1-0` on Debian/Ubuntu, `webkit2gtk4.1` on Fedora), plus OpenSSL.
+`install.sh` bootstraps these if the release binary cannot load its libraries.
+The release archive includes `scripts/system-deps.sh`; source builds install
+frontend dependencies and build the UI before Cargo embeds it.
+
+CLI fixtures fake libvirt and the guest agent. Browser interaction tests use
+synthetic mocks. Native fixture modes are `setup`, `status`, `stopped`,
+`first-boot-start` and `first-boot-ready` through `WS_GUI_FIXTURE`; they keep
+all command effects in memory, without VM, setup or keyring access.
+`gui:smoke` creates an invisible OmaBox, checks the real WebKitGTK canvas and
+bundled Lottie renderer and clipboard fallback, and saves a screenshot and
+JSON evidence.
 `guest:check` requires an already running QEMU guest and reads script syntax,
 VM guards and driver readiness without applying provisioning.
 
