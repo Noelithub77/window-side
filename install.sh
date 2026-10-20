@@ -83,7 +83,18 @@ if [[ -f "$receipt" && ! -L "$receipt" && -f "$prefix/bin/ws" && ! -L "$prefix/b
   previous=$(sha256sum -- "$prefix/bin/ws"); previous=${previous%% *}
   if grep -Fxq "sha256=$previous" "$receipt"; then owned=true; fi
 fi
+icon_files=("$root"/icons/hicolor/*/apps/window-side.*)
+[[ -f "${icon_files[0]}" ]] || { echo 'Missing packaged icons/hicolor tree' >&2; exit 1; }
 files=(bin/ws share/applications/window-side.desktop share/licenses/window-side/LICENSE share/window-side/install-receipt)
+for source in "${icon_files[@]}"; do
+  relative="share/icons/${source#"$root/icons/"}"
+  files+=("$relative")
+  directory="$prefix/$(dirname -- "$relative")"
+  while [[ "$directory" != "$prefix" && "$directory" != / ]]; do
+    [[ ! -L "$directory" ]] || { echo "Installation directories must not be symlinks: $directory" >&2; exit 1; }
+    directory=$(dirname -- "$directory")
+  done
+done
 for relative in "${files[@]}"; do
   target="$prefix/$relative"
   if [[ -d "$target" && ! -L "$target" ]]; then echo "Refusing to replace a directory: $target" >&2; exit 1; fi
@@ -113,7 +124,7 @@ if ! $dry_run; then
   done
   mkdir -p -- "$prefix/bin" "$prefix/share/applications" "$prefix/share/licenses/window-side" "$prefix/share/window-side"
   temporary=$(mktemp "$prefix/bin/.ws.XXXXXXXX")
-  trap 'rm -f -- "${temporary:-}" "${desktop_temporary:-}" "${license_temporary:-}" "${receipt_temporary:-}"' EXIT
+  trap 'rm -f -- "${temporary:-}" "${desktop_temporary:-}" "${license_temporary:-}" "${receipt_temporary:-}" "${icon_temporary:-}"' EXIT
   install -m 755 -- "$binary" "$temporary"
   desktop_temporary=$(mktemp --suffix=.desktop "$prefix/share/applications/.window-side.XXXXXXXX")
   executable="$prefix/bin/ws"
@@ -132,6 +143,16 @@ if ! $dry_run; then
   license_temporary=$(mktemp "$prefix/share/licenses/window-side/.license.XXXXXXXX")
   install -m 644 -- "$root/LICENSE" "$license_temporary"
   mv -Tf -- "$license_temporary" "$prefix/share/licenses/window-side/LICENSE"
+  for source in "${icon_files[@]}"; do
+    target="$prefix/share/icons/${source#"$root/icons/"}"
+    mkdir -p -- "$(dirname -- "$target")"
+    icon_temporary=$(mktemp "$(dirname -- "$target")/.window-side.XXXXXXXX")
+    install -m 644 -- "$source" "$icon_temporary"
+    mv -Tf -- "$icon_temporary" "$target"
+  done
+  if command -v gtk-update-icon-cache >/dev/null; then
+    gtk-update-icon-cache -f -t "$prefix/share/icons/hicolor" >&2 || echo 'Installed; refreshing the optional icon cache failed' >&2
+  fi
   receipt_temporary=$(mktemp "$prefix/share/window-side/.receipt.XXXXXXXX")
   printf 'version=%s\nsha256=%s\n' "$version" "$digest" > "$receipt_temporary"
   mv -Tf -- "$receipt_temporary" "$receipt"

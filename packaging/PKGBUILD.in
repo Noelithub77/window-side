@@ -42,5 +42,10 @@ package() {
   cd "$pkgname-$pkgver"
   install -Dm755 target/release/ws "$pkgdir/usr/bin/ws"
   install -Dm644 packaging/window-side.desktop "$pkgdir/usr/share/applications/window-side.desktop"
+  mkdir -p "$pkgdir/usr/share/icons"
+  cp -R icons/hicolor "$pkgdir/usr/share/icons/"
+  if command -v gtk-update-icon-cache >/dev/null; then
+    gtk-update-icon-cache -f -t "$pkgdir/usr/share/icons/hicolor" || true
+  fi
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/window-side/LICENSE"
 }

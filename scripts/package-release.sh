@@ -32,6 +32,8 @@ install -m 755 "$binary" "$stage/$name/ws"
 install -m 755 "$root/install.sh" "$stage/$name/install.sh"
 install -m 755 "$root/scripts/system-deps.sh" "$stage/$name/scripts/system-deps.sh"
 install -m 644 "$root/packaging/window-side.desktop" "$stage/$name/packaging/window-side.desktop"
+mkdir -p "$stage/$name/icons"
+cp -R "$root/icons/hicolor" "$stage/$name/icons/"
 install -m 644 "$root/LICENSE" "$root/README.md" "$stage/$name/"
 printf 'version=%s\nrevision=%s\ndirty=%s\nbuildPlatform=Arch Linux x86_64\n' "$version" "$revision" "$dirty" > "$stage/$name/build-info.txt"
 epoch=$(git -C "$root" show -s --format=%ct HEAD)

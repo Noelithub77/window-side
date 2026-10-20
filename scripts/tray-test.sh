@@ -31,7 +31,7 @@ cleanup() {
     --argjson success "$([[ "$result" == 0 ]] && echo true || echo false)" --argjson teardown "$teardown" \
     '{environment:"isolated-omabox", binary:$binary, artifacts:$artifacts, success:$success,
       stage:$stage, ownBoxesTornDown:$teardown, hostSetupApplied:false, guestActionsRun:false,
-      checked:(if $success then ["stock bar registration", "dbusmenu labels and disabled start", "close keeps tray process", "activate reopens window", "menu quit exits", "no host close exits", "second launch exits zero with one window and process"] else [] end)}' \
+      checked:(if $success then ["stock bar registration", "embedded tray pixmaps (22, 32, 48)", "dbusmenu labels and disabled start", "close keeps tray process", "activate reopens window", "menu quit exits", "no host close exits", "second launch exits zero with one window and process"] else [] end)}' \
     | tee "$output/result.json"
   exit "$result"
 }
@@ -67,6 +67,14 @@ service=${item%%/*}
 item_path="/${item#*/}"
 bus get-property "$service" "$item_path" org.kde.StatusNotifierItem Id > "$output/item-id.json"
 jq -e '[.. | strings] | index("window-side") != null' "$output/item-id.json" >/dev/null
+bus get-property "$service" "$item_path" org.kde.StatusNotifierItem IconName > "$output/icon-name.json"
+jq -e '.data == ""' "$output/icon-name.json" >/dev/null
+bus get-property "$service" "$item_path" org.kde.StatusNotifierItem IconPixmap > "$output/icon-pixmap.json"
+jq -e '(.data | map(.[0]) == [22,32,48]) and
+  (.data | all(.[]; .[0] == .[1] and (.[2] | length) == (.[0] * .[1] * 4)))' "$output/icon-pixmap.json" >/dev/null
+# Reveal the stock 1280px bar's tray drawer before capturing the icon.
+omabox pointer -b "$box" -- move 1177 12 sleep 800 move 1152 12 sleep 100
+omabox shot -b "$box" -o "$output/tray-screen.png" >/dev/null
 bus get-property "$service" "$item_path" org.kde.StatusNotifierItem Menu > "$output/menu-path.json"
 menu=$(jq -er '[.. | strings | select(startswith("/"))] | .[0]' "$output/menu-path.json")
 bus call "$service" "$menu" com.canonical.dbusmenu GetLayout iias -- 0 -1 0 > "$output/menu-layout.json"

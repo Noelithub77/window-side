@@ -32,7 +32,7 @@ jobs:
           restore-keys: arch-pacman-
       - name: Install build and fixture tools
         run: |
-          pacman -Syu --noconfirm --needed git rust pkgconf webkit2gtk-4.1 gtk3 openssl nodejs pnpm jq ripgrep desktop-file-utils
+          pacman -Syu --noconfirm --needed git rust pkgconf webkit2gtk-4.1 gtk3 openssl nodejs pnpm jq ripgrep desktop-file-utils librsvg imagemagick
           pacman -Sc --noconfirm
       - name: Save installed pacman packages
         if: github.ref_type != 'tag' && steps.pacman.outputs.cache-hit != 'true'

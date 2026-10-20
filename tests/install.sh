@@ -7,7 +7,7 @@ export HOME="$fixture/home" XDG_STATE_HOME="$fixture/state"
 mkdir -p "$HOME" "$fixture/bin"
 unset DISPLAY WAYLAND_DISPLAY
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$fixture/no-bus"
-for utility in bash dirname realpath sha256sum grep date mkdir cp mktemp install chmod sed mv rm jq desktop-file-validate rg cat ln tail wc script update-desktop-database; do
+for utility in bash dirname realpath sha256sum grep date mkdir cp mktemp install chmod sed mv rm jq desktop-file-validate rg cat cmp ln tail wc script update-desktop-database; do
   if command -v "$utility" >/dev/null; then ln -s "$(command -v "$utility")" "$fixture/bin/$utility"; fi
 done
 export PATH="$fixture/bin" WS_INSTALL_LOG="$fixture/actions.log"
@@ -43,9 +43,22 @@ install_app --dry-run | jq -e '.applied == false and .environment == "local-inst
 [[ ! -e "$prefix" && ! -e "$XDG_STATE_HOME" ]]
 install_app | jq -e '.applied == true' >/dev/null
 [[ "$("$prefix/bin/ws" --version)" == 'ws 0.1.0' ]]
+for source in "$root"/icons/hicolor/*/apps/window-side.*; do
+  cmp "$source" "$prefix/share/icons/${source#"$root/icons/"}"
+done
+grep -Fxq 'Icon=window-side' "$prefix/share/applications/window-side.desktop"
 desktop-file-validate "$prefix/share/applications/window-side.desktop"
 grep -Fxq "Exec=\"$prefix/bin/ws\" launch" "$prefix/share/applications/window-side.desktop"
+# Exercise an optional cache helper failure without touching system icon folders.
+cat > "$fixture/bin/gtk-update-icon-cache" <<'CACHE'
+#!/usr/bin/env bash
+printf 'icon-cache:%s\n' "$*" >> "$WS_INSTALL_LOG"
+exit 1
+CACHE
+chmod +x "$fixture/bin/gtk-update-icon-cache"
 install_app | jq -e '.applied == true' >/dev/null
+rg -Fq "icon-cache:-f -t $prefix/share/icons/hicolor" "$WS_INSTALL_LOG"
+rm "$fixture/bin/gtk-update-icon-cache"
 printf 'user edit\n' >> "$prefix/bin/ws"
 if install_app >"$fixture/out" 2>"$fixture/error"; then echo 'Overwrote a modified binary' >&2; exit 1; fi
 grep -q 'Existing unmanaged file' "$fixture/error"
@@ -69,6 +82,20 @@ ln -s "$source_desktop" "$prefix/share/applications/window-side.desktop"
 install_app --replace-existing >/dev/null
 [[ ! -L "$prefix/share/applications/window-side.desktop" ]]
 grep -Fxq 'old desktop' "$source_desktop"
+# Icon file links are replaced without altering their targets.
+icon="$prefix/share/icons/hicolor/22x22/apps/window-side.png"
+printf 'old icon\n' > "$fixture/old-icon"
+rm "$icon"
+ln -s "$fixture/old-icon" "$icon"
+install_app >/dev/null
+[[ ! -L "$icon" ]]
+grep -Fxq 'old icon' "$fixture/old-icon"
+# Refuse theme directory links before writing any installed files.
+mv "$prefix/share/icons/hicolor/22x22" "$fixture/managed-icons"
+ln -s "$fixture/managed-icons" "$prefix/share/icons/hicolor/22x22"
+if install_app >"$fixture/out" 2>"$fixture/error"; then exit 1; fi
+rm "$prefix/share/icons/hicolor/22x22"
+mv "$fixture/managed-icons" "$prefix/share/icons/hicolor/22x22"
 # Installation through a directory link must never modify a managed checkout.
 linked="$fixture/linked-prefix"
 mkdir -p "$linked" "$fixture/managed-bin"

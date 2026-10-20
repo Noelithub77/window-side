@@ -1,72 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <clipPath id="tile"><rect x="64" y="64" width="896" height="896" rx="232"/></clipPath>
-    <linearGradient id="ink" x1="0" y1="0" x2="0.4" y2="1">
-      <stop offset="0" stop-color="#23213a"/>
-      <stop offset="1" stop-color="#0f0e17"/>
-    </linearGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
-      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.04"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.1"/>
-    </linearGradient>
-    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2e2c44"/>
-      <stop offset="1" stop-color="#1a1927"/>
-    </linearGradient>
-    <linearGradient id="glassBack" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a2840"/>
-      <stop offset="1" stop-color="#17161f"/>
-    </linearGradient>
-    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.32"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.05"/>
-    </linearGradient>
     <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#c4fbec"/>
       <stop offset="1" stop-color="#6fdcc1"/>
     </linearGradient>
-    <linearGradient id="lilac" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#b8a9ff"/>
-      <stop offset="1" stop-color="#95c8ff"/>
-    </linearGradient>
-    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
-    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="26"/></filter>
-    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
-      <feDropShadow dx="0" dy="26" stdDeviation="30" flood-color="#05040a" flood-opacity="0.6"/>
-    </filter>
   </defs>
-
-  <g clip-path="url(#tile)">
-    <rect x="64" y="64" width="896" height="896" fill="url(#ink)"/>
-    <g filter="url(#blur)">
-      <circle cx="300" cy="300" r="230" fill="#b8a9ff" opacity="0.5"/>
-      <circle cx="700" cy="720" r="260" fill="#8ce9d2" opacity="0.45"/>
-      <circle cx="800" cy="240" r="140" fill="#ff9ec7" opacity="0.3"/>
-    </g>
-
-    <!-- Linux, behind -->
-    <g filter="url(#shadow)">
-      <rect x="168" y="236" width="500" height="372" rx="64" fill="url(#glassBack)"/>
-      <rect x="169.5" y="237.5" width="497" height="369" rx="62.5" fill="none" stroke="url(#edge)" stroke-width="3"/>
-      <circle cx="228" cy="296" r="15" fill="#ff9ec7"/>
-      <circle cx="276" cy="296" r="15" fill="#ffd89a"/>
-      <circle cx="324" cy="296" r="15" fill="#8ce9d2"/>
-      <rect x="218" y="366" width="34" height="20" rx="10" fill="#8ce9d2"/>
-      <rect x="270" y="366" width="200" height="20" rx="10" fill="url(#lilac)" opacity="0.9"/>
-      <rect x="218" y="418" width="150" height="20" rx="10" fill="#ffffff" opacity="0.16"/>
-    </g>
-
-    <!-- Windows, beside it -->
-    <g filter="url(#shadow)">
-      <rect x="356" y="404" width="500" height="400" rx="68" fill="url(#glass)"/>
-      <rect x="357.5" y="405.5" width="497" height="397" rx="66.5" fill="none" stroke="url(#edge)" stroke-width="3"/>
-    </g>
-    <rect x="474" y="478" width="264" height="252" rx="60" fill="#8ce9d2" opacity="0.32" filter="url(#soft)"/>
-    <rect x="480" y="478" width="120" height="120" rx="34" fill="url(#mint)"/>
-    <rect x="612" y="478" width="120" height="120" rx="34" fill="url(#mint)" opacity="0.82"/>
-    <rect x="480" y="610" width="120" height="120" rx="34" fill="url(#mint)" opacity="0.82"/>
-    <rect x="612" y="610" width="120" height="120" rx="34" fill="url(#mint)" opacity="0.6"/>
-  </g>
-  <rect x="65.5" y="65.5" width="893" height="893" rx="230.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <rect width="1024" height="1024" fill="#000000"/>
+  <rect x="224" y="224" width="274" height="274" rx="78" fill="url(#mint)"/>
+  <rect x="526" y="224" width="274" height="274" rx="78" fill="url(#mint)" opacity="0.82"/>
+  <rect x="224" y="526" width="274" height="274" rx="78" fill="url(#mint)" opacity="0.82"/>
+  <rect x="526" y="526" width="274" height="274" rx="78" fill="url(#mint)" opacity="0.6"/>
 </svg>

@@ -28,6 +28,7 @@ struct WindowSideTray {
     configured: bool,
     sender: Sender<Command>,
     online: Arc<AtomicBool>,
+    icons: Vec<ksni::Icon>,
 }
 
 impl WindowSideTray {
@@ -53,8 +54,9 @@ impl Tray for WindowSideTray {
         "window-side".into()
     }
 
-    fn icon_name(&self) -> String {
-        "computer".into()
+    // A missing theme name can override valid pixmaps in tray hosts.
+    fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+        self.icons.clone()
     }
 
     fn tool_tip(&self) -> ToolTip {
@@ -132,6 +134,13 @@ pub(super) fn start(sender: Sender<Command>) -> Option<TrayHandle> {
         configured: false,
         sender,
         online: online.clone(),
+        icons: match embedded_icons() {
+            Ok(icons) => icons,
+            Err(error) => {
+                eprintln!("window-side tray: could not decode embedded icons: {error}");
+                Vec::new()
+            }
+        },
     };
     match tray.spawn() {
         Ok(handle) => Some(TrayHandle { handle, online }),
@@ -140,5 +149,65 @@ pub(super) fn start(sender: Sender<Command>) -> Option<TrayHandle> {
             None
         }
         Err(_) => None,
+    }
+}
+
+fn decode_icon(bytes: &[u8]) -> anyhow::Result<ksni::Icon> {
+    let image = tauri::image::Image::from_bytes(bytes)?;
+    let mut data = image.rgba().to_vec();
+    for pixel in data.chunks_exact_mut(4) {
+        pixel.rotate_right(1);
+    }
+    Ok(ksni::Icon {
+        width: i32::try_from(image.width())?,
+        height: i32::try_from(image.height())?,
+        data,
+    })
+}
+
+fn embedded_icons() -> anyhow::Result<Vec<ksni::Icon>> {
+    [
+        include_bytes!("../../icons/hicolor/22x22/apps/window-side.png").as_slice(),
+        include_bytes!("../../icons/hicolor/32x32/apps/window-side.png").as_slice(),
+        include_bytes!("../../icons/hicolor/48x48/apps/window-side.png").as_slice(),
+    ]
+    .into_iter()
+    .map(decode_icon)
+    .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_pixmaps_are_network_order_argb() -> anyhow::Result<()> {
+        let icons = embedded_icons()?;
+        assert_eq!(icons.iter().map(|i| i.width).collect::<Vec<_>>(), [22, 32, 48]);
+        for icon in icons {
+            assert_eq!(icon.width, icon.height);
+            assert_eq!(icon.data.len(), (icon.width * icon.height * 4) as usize);
+            assert!(icon.data.chunks_exact(4).any(|p| p[0] > 0));
+        }
+        let bytes = include_bytes!("../../icons/hicolor/22x22/apps/window-side.png");
+        let source = tauri::image::Image::from_bytes(bytes)?;
+        let decoded = decode_icon(bytes)?;
+        for (rgba, argb) in source.rgba().chunks_exact(4).zip(decoded.data.chunks_exact(4)) {
+            assert_eq!(argb, [rgba[3], rgba[0], rgba[1], rgba[2]]);
+        }
+        assert!(decode_icon(b"invalid PNG").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn context_uses_full_window_icon_without_bundling() -> anyhow::Result<()> {
+        let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+        let icon = context
+            .default_window_icon()
+            .ok_or_else(|| anyhow::anyhow!("Missing window icon"))?;
+        let expected = tauri::image::Image::from_bytes(include_bytes!("../../icons/icon.png"))?;
+        assert_eq!((icon.width(), icon.height()), (512, 512));
+        assert_eq!(icon.rgba(), expected.rgba());
+        Ok(())
     }
 }

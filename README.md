@@ -210,6 +210,12 @@ must run it inside OmaBox. `./ops ui:bindings` generates typed IPC from a Rust
 test, and `./ops ui:bindings:check` rejects stale output. No code generation
 runs during app startup. Lint uses strict type-aware oxlint, with no formatter.
 
+`./ops icons` regenerates every application and tray size from
+`icons/source/window-side.svg` with the dev-only `rsvg-convert` (librsvg) and
+`magick` (ImageMagick) tools.
+The PNGs retain an opaque alpha channel for Tauri. `./ops icons:check`, also run by
+`./ops check`, regenerates into a temporary directory and compares the exact bytes.
+
 Runtime packages are WebKitGTK 4.1 and GTK 3 (`webkit2gtk-4.1` on Arch,
 `libwebkit2gtk-4.1-0` on Debian/Ubuntu, `webkit2gtk4.1` on Fedora), plus OpenSSL.
 `install.sh` bootstraps these if the release binary cannot load its libraries.

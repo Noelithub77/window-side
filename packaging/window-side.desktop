@@ -2,7 +2,7 @@
 Name=window-side
 Comment=Manage your dual-boot Windows virtual machine
 Exec=ws
-Icon=computer
+Icon=window-side
 Terminal=false
 Type=Application
 Categories=System;Emulator;

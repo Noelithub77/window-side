@@ -23,4 +23,4 @@ omabox wait -b "$box" --timeout 40s window class:ws >/dev/null
 omabox wait -b "$box" --timeout 40s cmd -- test -s /tmp/window-side-smoke.json >/dev/null
 omabox run -b "$box" -- cat /tmp/window-side-smoke.json > "$output/rendering.json"
 omabox shot -b "$box" --window class:ws -o "$output/window.png" >/dev/null
-jq -e '.webgl and .lottie and .clipboard and (.errors | length == 0)' "$output/rendering.json" >/dev/null
+jq -e '.windowIconMatches and .webgl and .lottie and .clipboard and (.errors | length == 0)' "$output/rendering.json" >/dev/null

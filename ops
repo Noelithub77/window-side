@@ -13,6 +13,8 @@ Usage: ./ops <command>
   ui:bindings:check     Reject stale bindings
   ui:test               Chromium interaction tests against the Vite build
   gui:smoke --output DIR  Real WebKitGTK fixture smoke in OmaBox
+  icons                 Regenerate tracked icons with rsvg-convert (dev only)
+  icons:check           Reject stale generated icons
   check                 Run unit tests, Clippy and CLI/installer fixtures; no VM or desktop actions
   check:release         Run those checks against the optimized release
   ci:run [--release]    Dispatch CI on main and watch it; --release warms the release cache
@@ -39,22 +41,28 @@ HELP
   ui:bindings:check) exec cargo test -j 2 app::bindings::tests::export_bindings ;;
   ui:test) exec pnpm -C ui exec playwright test ;;
   gui:smoke) shift; exec bash "$root/scripts/gui-smoke.sh" "$@" ;;
+  icons) shift; exec bash "$root/scripts/icons.sh" "$@" ;;
+  icons:check) shift; exec bash "$root/scripts/icons.sh" check "$@" ;;
   check)
+    "$root/ops" icons:check
     "$root/ops" ui:check
     cargo test -j 2
     cargo clippy -j 2 --all-targets -- -D warnings
     cargo build -j 2
     bash "$root/tests/first-boot.sh"
     bash "$root/tests/packages.sh"
+    bash "$root/tests/icon-packaging.sh"
     exec bash "$root/tests/install.sh"
     ;;
   check:release)
+    "$root/ops" icons:check
     "$root/ops" ui:check
     cargo test --release --locked -j 2
     cargo clippy --release --locked -j 2 --all-targets -- -D warnings
     cargo build --release --locked -j 2
     WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/first-boot.sh"
     WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/packages.sh"
+    bash "$root/tests/icon-packaging.sh"
     exec bash "$root/tests/install.sh"
     ;;
   ci:run) shift; exec bash "$root/scripts/ci-run.sh" "$@" ;;

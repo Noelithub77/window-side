@@ -13,14 +13,25 @@ pub struct Report {
 }
 #[tauri::command]
 #[specta::specta]
-pub fn smoke_report(state: tauri::State<'_, super::State>, report: Report) -> Result<(), String> {
+pub fn smoke_report(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, super::State>,
+    report: Report,
+) -> Result<(), String> {
     if state.lock()?.fixture.is_none() {
         return Err("Rendering probes require a fixture".into());
     }
     let path = std::env::var("WS_GUI_SMOKE_OUTPUT").map_err(|_| "No rendering probe requested")?;
+    let expected = tauri::image::Image::from_bytes(include_bytes!("../../icons/icon.png"))
+        .map_err(|e| e.to_string())?;
+    let matches = app.default_window_icon().is_some_and(|icon| {
+        icon.width() == 512 && icon.height() == 512 && icon.rgba() == expected.rgba()
+    });
+    let mut value = serde_json::to_value(&report).map_err(|e| e.to_string())?;
+    value["windowIconMatches"] = serde_json::json!(matches);
     std::fs::write(
         path,
-        serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?,
+        serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())
 }

@@ -19,7 +19,7 @@ anyhow = "1.0.104"
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive"] }
 tauri-plugin-clipboard-manager = "=2.5.0"
-tauri = { version = "=2.12.4", features = ["devtools"] }
+tauri = { version = "=2.12.4", features = ["devtools", "image-png"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive", "function"] }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
 specta-typescript = "=0.0.12"
