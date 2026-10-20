@@ -16,6 +16,7 @@ Usage: ./ops <command>
   test:first-boot        Check readiness and rollback with a fake guest
   guest:check            Read-only script/guard/driver checks in the running QEMU guest
   build                 Build the native ws binary with the existing Cargo cache
+  dev                   Build and replace this checkout's development app
   gui:test --output DIR Check onboarding, setup, overview and settings in OmaBox
   gui:installed --binary FILE --output DIR  Open an installed binary in a fresh OmaBox HOME
 
@@ -45,6 +46,7 @@ HELP
   test:first-boot) exec bash "$root/tests/first-boot.sh" ;;
   guest:check) exec bash "$root/tests/guest-check.sh" ;;
   build) exec cargo build -j 2 ;;
+  dev) shift; exec "$root/scripts/dev.sh" "$@" ;;
   gui:test) shift; exec "$root/scripts/gui-test.sh" "$@" ;;
   gui:installed) shift; exec "$root/scripts/installed-gui-test.sh" "$@" ;;
   *) echo 'Use ./ops --help' >&2; exit 2 ;;

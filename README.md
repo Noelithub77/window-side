@@ -122,6 +122,12 @@ looking-glass-setup` installs the guest side. Host reboot is explicit.
 
 ## Development and release
 
+Run `./ops dev` to build and open the development app. Re-run it after edits
+to replace the previous development instance from this checkout; a failed build
+keeps that instance running. Installed apps and CLI commands are left running.
+The tracked `t3.json` declares the same command as the **Dev** action. Import it
+once through T3 Code’s Settings → Project → Actions → Import scripts.
+
 ```sh
 ./ops check
 ./ops check:release

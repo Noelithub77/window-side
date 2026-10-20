@@ -1,0 +1,10 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Dev",
+      "command": "./ops dev",
+      "icon": "play"
+    }
+  ]
+}
