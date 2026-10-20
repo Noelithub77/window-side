@@ -13,6 +13,10 @@ Usage: ./ops <command>
   ui:bindings:check     Reject stale bindings
   ui:test               Chromium interaction tests against the Vite build
   gui:smoke --output DIR  Real WebKitGTK fixture smoke in OmaBox
+  site:dev              Landing page dev server on 4310 (site/)
+  site:check            Landing page typecheck, strict oxlint and build
+  site:preview          Serve the landing page build on 4311
+  site:deploy [--dry-run]  Build and deploy the landing page to window-side.allpyq.in with cf
   icons                 Regenerate tracked icons with rsvg-convert (dev only)
   icons:check           Reject stale generated icons
   check                 Run unit tests, Clippy and CLI/installer fixtures; no VM or desktop actions
@@ -41,6 +45,10 @@ HELP
   ui:bindings:check) exec cargo test -j 2 app::bindings::tests::export_bindings ;;
   ui:test) exec pnpm -C ui exec playwright test ;;
   gui:smoke) shift; exec bash "$root/scripts/gui-smoke.sh" "$@" ;;
+  site:dev) exec pnpm -C site dev ;;
+  site:check) pnpm -C site lint; exec pnpm -C site build ;;
+  site:preview) exec pnpm -C site preview ;;
+  site:deploy) shift; pnpm -C site lint; pnpm -C site build; exec pnpm -C site exec cf deploy --prebuilt "$@" ;;
   icons) shift; exec bash "$root/scripts/icons.sh" "$@" ;;
   icons:check) shift; exec bash "$root/scripts/icons.sh" check "$@" ;;
   check)

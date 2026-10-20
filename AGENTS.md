@@ -36,10 +36,11 @@ src/
 ui/src/                  React screens, components, styles, browser mocks
 ui/src/bindings.ts        Generated Rust command/type bindings
 ui/tests/                Playwright Chromium interaction tests
+site/                    Landing page (Vite, GSAP, rough.js, WebGL), deployed with cf
 assets/                  guest PowerShell, Omarchy plugin, illustrations, agent prompt
 scripts/, tests/         GUI, installer, first-boot and guest checks
 packaging/, install.sh   desktop entry, AUR template, one-command installer
-plan/                    design notes (`tauri-app` is current)
+plan/                    design notes (`tauri-app` is current, `landing` for the site)
 ```
 
 ## Commands
@@ -55,6 +56,7 @@ Use `./ops --help` first; prefer it over one-off scripts.
 - `./ops gui:installed --binary FILE --output DIR`: an installed binary in a fresh OmaBox HOME.
 - `./ops guest:check`: read-only checks in a running Windows guest. Never start the VM just for a check without asking.
 - `./ops dev`: build and replace this checkout's development app.
+- `./ops site:check`: landing page lint and build. `site:dev` serves it; `site:deploy [--dry-run]` builds and deploys it to window-side.allpyq.in with the `cf` CLI.
 
 CI is manual and `v*` tag-only to save minutes. Run `./ops check` locally before
 pushing; branch pushes and pull requests do not trigger CI. Debug and release

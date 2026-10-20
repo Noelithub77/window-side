@@ -1,0 +1,101 @@
+[
+  {
+    "id": "help",
+    "title": "help",
+    "command": "ws --help",
+    "output": "Run your dual-boot Windows install as a VM. Without a command, opens the window\n\nUsage: ws [COMMAND]\n\nCommands:\n  setup                Detect Windows, GPUs and CPUs, then configure the VM and boot profiles\n  config               Read, check and change config.json as JSON\n  define               Validate the host and define the libvirt domain from its current file\n  start                Start Windows headlessly, wait for its guest agent and sign in\n  launch               Start Windows if needed and show it (Looking Glass in the GPU profile)\n  console              Show running Windows without changing its state\n  stop                 Request a clean Windows shutdown\n  force-stop           Immediately power off the VM\n  reboot               Reboot Linux into the normal or GPU boot profile\n  looking-glass        Open the Looking Glass client in the GPU profile\n  looking-glass-setup  Install the signed Looking Glass virtual display in running Windows\n  drivers              Attach the stable Windows guest-driver installer as a CD\n…",
+    "durationMs": 18,
+    "source": "real",
+    "note": "Trimmed from the installed CLI help."
+  },
+  {
+    "id": "status",
+    "title": "status",
+    "command": "ws status",
+    "output": "window-side: shut off (boot profile: gpu)\n",
+    "durationMs": 42,
+    "source": "real",
+    "note": "Read-only host status; the VM remained shut off."
+  },
+  {
+    "id": "start",
+    "title": "start",
+    "command": "ws start",
+    "output": "",
+    "durationMs": 28000,
+    "source": "derived",
+    "note": "Illustrative success shape; not run because the VM must stay off."
+  },
+  {
+    "id": "metrics",
+    "title": "metrics",
+    "command": "ws metrics",
+    "output": "{\"available\":false,\"backend\":\"libvirt\",\"bootProfile\":\"gpu\",\"cpu\":null,\"memory\":\"—\",\"memoryPercent\":null,\"network\":\"—\",\"pids\":null,\"sampledAt\":null,\"source\":null,\"status\":\"shut off\",\"storage\":{\"error\":\"\",\"status\":\"ready\"},\"updates\":{\"checkedAt\":0.0,\"fresh\":false,\"pending\":null,\"rebootRequired\":null,\"titles\":[]},\"uptimeSeconds\":null}\n",
+    "durationMs": 34,
+    "source": "derived",
+    "note": "Stopped-state JSON shape from the Rust serializer; storage readiness is illustrative."
+  },
+  {
+    "id": "exec",
+    "title": "exec",
+    "command": "ws exec --file X --json --timeout 60",
+    "output": "{\n  \"exitCode\": 0,\n  \"stdout\": \"Microsoft Windows 11 Pro\\r\\n\",\n  \"stderr\": \"\",\n  \"truncated\": false\n}\n",
+    "durationMs": 920,
+    "source": "derived",
+    "note": "Illustrative PowerShell version output; the VM was not queried."
+  },
+  {
+    "id": "ssh",
+    "title": "ssh",
+    "command": "ws ssh '$PSVersionTable.PSVersion.ToString()'",
+    "output": "7.5.2\r\n",
+    "durationMs": 510,
+    "source": "derived",
+    "note": "Illustrative PowerShell version output; SSH was not run."
+  },
+  {
+    "id": "updates",
+    "title": "updates",
+    "command": "ws updates status",
+    "output": "{\"checkedAt\":0,\"pending\":[]}\n",
+    "durationMs": 22,
+    "source": "derived",
+    "note": "Default status shape when no saved update report exists; not read from guest state."
+  },
+  {
+    "id": "config-path",
+    "title": "config",
+    "command": "ws config path",
+    "output": "{\n  \"config\": \"/home/you/.config/window-side/config.json\",\n  \"domain\": \"/home/you/.config/window-side/domain.xml\",\n  \"schema\": \"/home/you/.config/window-side/config.schema.json\"\n}\n",
+    "durationMs": 24,
+    "source": "real",
+    "note": "Real output with the home directory sanitized."
+  },
+  {
+    "id": "config-memory",
+    "title": "memory",
+    "command": "ws config get vm.memory_mib",
+    "output": "16384\n",
+    "durationMs": 21,
+    "source": "real",
+    "note": "Read-only config value: 16 GiB."
+  },
+  {
+    "id": "config-vcpus",
+    "title": "cpus",
+    "command": "ws config get vm.vcpus",
+    "output": "8\n",
+    "durationMs": 20,
+    "source": "real",
+    "note": "Read-only config value: 8 vCPUs."
+  },
+  {
+    "id": "config-validate",
+    "title": "validate",
+    "command": "ws config validate",
+    "output": "{\n  \"config\": \"/home/you/.config/window-side/config.json\",\n  \"valid\": true\n}\n",
+    "durationMs": 23,
+    "source": "real",
+    "note": "Config validation passed; the home directory is sanitized."
+  }
+]

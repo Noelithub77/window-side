@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b12" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="window-side runs the Windows already on your dual-boot drive as a virtual machine inside Linux, or boots it natively. One install, one set of apps and files." />
+    <meta property="og:title" content="window-side · Windows, right beside Linux" />
+    <meta property="og:description" content="Your dual-boot Windows, running in a window on Linux. No reboot, no second install." />
+    <meta property="og:image" content="https://window-side.allpyq.in/og.jpg" />
+    <meta property="og:url" content="https://window-side.allpyq.in/" />
+    <link rel="canonical" href="https://window-side.allpyq.in/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>window-side · Windows, right beside Linux</title>
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
+    <link rel="preload" href="/fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      @font-face{font-family:"Bricolage";src:url(/fonts/bricolage-grotesque.woff2) format("woff2");font-weight:200 800;font-display:swap}
+      @font-face{font-family:"Inter";src:url(/fonts/inter.woff2) format("woff2");font-weight:100 900;font-display:swap}
+      @font-face{font-family:"Excalifont";src:url(/fonts/excalifont.woff2) format("woff2");font-weight:400;font-display:swap}
+      :root{--bg:#0b0b12;--fg:#f1f1f7;--muted:#9d9dab;--dim:#6c6c7a;--line:#1f1f2a;--card:#12121a;--mint:#85e8c6;--frost:#c4fbec;--lavender:#bcaef9;--peach:#f9c197;--rose:#f2a3c1;--sky:#91d1f3;--ink:#062018;--radius:22px;--ease:cubic-bezier(.22,1,.36,1);--mono:ui-monospace,"JetBrains Mono","SF Mono","Liberation Mono",Consolas,monospace;--shadow:0 1px 0 #ffffff0a inset,0 24px 60px -30px #000c,0 2px 6px -2px #0008;font-family:"Inter",system-ui,sans-serif;color:var(--fg);background:var(--bg);color-scheme:dark;-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
+      *{box-sizing:border-box}body{margin:0;overflow-x:clip}a{color:inherit;text-decoration:none}[hidden]{display:none!important}
+      .bar{position:fixed;inset:0 0 auto;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:max(14px,env(safe-area-inset-top)) clamp(16px,4vw,40px) 14px}
+      .brand{display:inline-flex;align-items:center;gap:10px;font:650 19px/1 "Bricolage",sans-serif;letter-spacing:-.02em}
+      .brand .mark{width:26px;height:26px}
+      .hero{position:relative;min-height:100svh;display:grid;place-items:center;padding:110px 20px 120px;text-align:center;isolation:isolate;overflow:hidden}
+      .hero-backdrop{position:absolute;inset:0;z-index:-3;background:radial-gradient(50% 40% at 50% 18%,#bcaef914,transparent 70%),radial-gradient(60% 50% at 50% 78%,#85e8c60e,transparent 70%)}
+      .hero-canvas{position:absolute;inset:0;z-index:-2;width:100%;height:100%;opacity:0;transition:opacity 1.6s ease}.hero-canvas.is-live{opacity:1}
+      .hero-inner{position:relative;width:min(100%,880px);display:grid;grid-template-columns:minmax(0,1fr);justify-items:center}
+      .mark{display:block;overflow:visible}
+      .hero .mark{width:clamp(96px,13vw,132px);height:auto;filter:drop-shadow(0 18px 50px #85e8c640)}
+      .mark .pane{transform-box:fill-box;transform-origin:50% 50%}
+      .js .hero .mark .pane{animation:pane .9s var(--ease) both}
+      .js .hero .mark .pane-2{animation-delay:.08s}.js .hero .mark .pane-3{animation-delay:.16s}
+      .js .hero .mark .pane-4{animation:open 1.5s .3s var(--ease) both;transform-origin:100% 50%}
+      @keyframes pane{from{opacity:0;transform:scale(.6)}}
+      @keyframes open{0%{opacity:0;transform:scale(.6)}35%{opacity:.6;transform:scale(1)}60%{transform:perspective(400px) rotateY(-38deg)}100%{transform:none}}
+      h1{margin:38px 0 0;font:700 clamp(44px,8vw,96px)/1.02 "Bricolage",sans-serif;letter-spacing:-.045em}
+      .glow{background:linear-gradient(100deg,var(--mint),var(--lavender) 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
+      .lede{max-width:620px;margin:30px auto 0;color:#bdbdca;font-size:clamp(16px,1.9vw,19px);line-height:1.6}
+      .getcard{width:min(100%,660px);min-width:0;margin-top:36px;padding:8px;border:1px solid var(--line);border-radius:var(--radius);background:#101018e6;box-shadow:var(--shadow);text-align:left}
+      .get-row{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 16px;border-radius:16px;background:#0c0c13;border:1px solid #1b1b25}
+      .get-row code{flex:1;min-width:0;font:13px/1.6 var(--mono);color:var(--frost);white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+      .get-row code::-webkit-scrollbar{display:none}
+      .get-row code b{color:var(--dim);font-weight:400}
+      .copy{display:inline-flex;align-items:center;gap:8px;padding:11px 16px;border:0;border-radius:12px;background:var(--mint);color:var(--ink);font:700 14px/1 "Inter",sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 8px 24px -10px #85e8c699}
+      .copy svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+      .facts{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:16px 0 0;padding:0;list-style:none;color:var(--muted);font-size:13px}
+      .facts li{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:#0f0f17}
+      .facts i{width:7px;height:7px;border-radius:50%;background:var(--mint)}.facts i.wip{background:var(--peach)}
+      @media (max-width:640px){.hero{padding:92px 18px 108px}h1{margin-top:30px;font-size:clamp(40px,11.5vw,58px)}.lede{margin-top:24px}.get-row{flex-direction:column;align-items:stretch;padding:12px}.copy{justify-content:center}}
+    </style>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <header class="bar">
+      <a class="brand" href="#top" aria-label="window-side home"><!--mark:brand-mark-->window-side</a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#why">Why</a><a href="#how">How it works</a><a href="#agents">Agents</a><a href="#hosts">Linux</a>
+      </nav>
+      <i class="bar-progress" aria-hidden="true"></i>
+      <div class="bar-end">
+        <a class="github" href="https://github.com/Noelithub77/window-side" aria-label="window-side on GitHub">
+          <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" id="top">
+        <div class="hero-backdrop" aria-hidden="true"></div>
+        <canvas class="hero-canvas" data-light aria-hidden="true"></canvas>
+        <div class="hero-inner">
+          <!--mark:hero-mark-->
+          <h1>Windows, right<br />beside <span class="glow">Linux.</span></h1>
+          <p class="lede">window-side runs the Windows already on your dual-boot drive as a virtual machine inside Linux. Boot it natively when you need to. One install, one set of apps and files.</p>
+          <div class="getcard">
+            <div class="get-row">
+              <code data-command><b>$ </b>curl -fsSL https://raw.githubusercontent.com/Noelithub77/window-side/main/get.sh | bash</code>
+              <button class="copy" type="button" data-copy><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="3" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg><span data-copy-label>Copy</span></button>
+            </div>
+          </div>
+          <ul class="facts" aria-label="Release facts">
+            <li><i></i>Arch · Ubuntu · Fedora</li>
+            <li><i></i>Hyprland · KDE · GNOME</li>
+            <li><i class="wip"></i>v0.1 prerelease</li>
+          </ul>
+        </div>
+        <a class="scroll-cue" href="#why" aria-label="Scroll to the story"><span></span><span></span><span></span></a>
+      </section>
+
+      <section class="section" id="why" data-pin-section>
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>01</span> Why</p>
+            <h2>Dual boot is a wall.</h2>
+            <p>Your Windows apps live on the other side of a reboot. Every trip closes your terminal, your browser and whatever you were doing. A fresh virtual machine skips the reboot, but then you keep two copies of Windows, two sets of apps and two lots of updates.</p>
+          </div>
+          <figure class="scene scene-wide" data-scene="wall" aria-label="Rebooting between Linux and Windows, then a second Windows in a VM, then window-side running the one install both ways">
+            <svg aria-hidden="true"></svg>
+          </figure>
+          <ol class="story-steps" data-story="wall" aria-hidden="true"><li>Reboot</li><li>Second copy</li><li>window-side</li></ol>
+        </div>
+      </section>
+
+      <section class="section" id="name">
+        <div class="wrap split">
+          <div class="section-head" data-reveal>
+            <p class="kicker"><span>02</span> The name</p>
+            <h2>A window in the wall.</h2>
+            <p>window-side keeps Windows at the side of your Linux desktop, like the seat by a window: you stay where you are, and the view is right there.</p>
+            <p class="aside">The mark is that window. Four panes, and the lighter one swings open onto Windows.</p>
+          </div>
+          <figure class="name-scene" data-reveal aria-label="The window-side mark with one pane swinging open onto Windows">
+            <p class="spelling" aria-hidden="true">window<span>·</span>side</p>
+            <p class="phonetic">/ˈwɪn.doʊ saɪd/ · the seat with the view</p>
+            <svg class="name-svg" data-scene="name" aria-hidden="true"></svg>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="how">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>03</span> How it works</p>
+            <h2>One install.<br />Two ways in.</h2>
+            <p>Booting Windows natively still works exactly as before. window-side adds a second door: KVM, the virtual machine built into the Linux kernel, starts that same Windows with the cores and memory you give it. If Windows has a drive of its own, the VM gets the whole drive. If it shares a drive with Linux, window-side joins a small copy of the boot files to the Windows partition, so the VM never sees your Linux partitions.</p>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Where Windows lives" data-reveal>
+            <button type="button" role="tab" aria-selected="true" data-act="disk" data-value="own">Its own drive</button>
+            <button type="button" role="tab" aria-selected="false" data-act="disk" data-value="shared">Shared with Linux</button>
+          </div>
+          <figure class="scene" data-scene="disk" aria-label="The Windows drive boots natively through the boot loader, or starts in a KVM virtual machine from Linux">
+            <svg aria-hidden="true"></svg>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="setup">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>04</span> Setup</p>
+            <h2>Look first.<br />Approve once.</h2>
+            <p>Guided setup finds your Windows partitions, graphics cards and CPU, then lets you choose memory and cores. Before anything changes it shows every file it will write. One administrator prompt applies it all, and opening the app alone never changes your machine.</p>
+          </div>
+          <figure class="frame" style="--focus: 78% 0" data-reveal>
+            <video data-lazy muted loop playsinline preload="none" poster="/media/app/setup.webp" aria-label="Guided setup: choosing the Windows drive, graphics, memory and cores, then reviewing the changes">
+              <source data-src="/media/app/setup.webm" type='video/webm; codecs="av01.0.05M.08"' />
+              <source data-src="/media/app/setup.mp4" type="video/mp4" />
+            </video>
+          </figure>
+          <ol class="chips" data-reveal><li><b>1</b> Detect</li><li><b>2</b> Choose</li><li><b>3</b> Review</li><li><b>4</b> Apply</li></ol>
+        </div>
+      </section>
+
+      <section class="section" id="first-boot">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>05</span> First boot</p>
+            <h2>Familiar first.<br />Fast after.</h2>
+            <p>Windows can’t read a VirtIO disk, the fast virtual hardware KVM prefers, until it has the drivers. So the first boot uses a plain SATA disk and network card that Windows already knows. You install the guest tools from a driver CD, the one manual step, and window-side switches to VirtIO and waits for the guest agent to answer.</p>
+          </div>
+          <figure class="scene" data-scene="boot" aria-label="First boot on SATA, the driver CD, the switch to VirtIO, and the guest agent answering. If it fails, the saved SATA setup comes back">
+            <svg aria-hidden="true"></svg>
+          </figure>
+          <div class="choice" data-reveal>
+            <button type="button" data-act="boot" data-value="ok">Drivers work</button>
+            <button type="button" data-act="boot" data-value="fail">Something fails</button>
+          </div>
+          <p class="footnote" data-reveal>Nothing is marked done until the guest agent answers on the new hardware. A failed switch restores the saved SATA definition after checking it is the same disk.</p>
+        </div>
+      </section>
+
+      <section class="section" id="display">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>06</span> Display</p>
+            <h2>Three ways to look.</h2>
+            <p>Run Windows headless for agents and background jobs, open a console when you want the desktop, or give it a real graphics card and watch through Looking Glass. Windows draws on its own GPU, and Looking Glass copies each finished frame through shared memory into a Linux window, so there’s no video stream and almost no delay.</p>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Display" data-reveal>
+            <button type="button" role="tab" aria-selected="false" data-act="display" data-value="headless">Headless</button>
+            <button type="button" role="tab" aria-selected="false" data-act="display" data-value="console">Console</button>
+            <button type="button" role="tab" aria-selected="true" data-act="display" data-value="glass">Looking Glass</button>
+          </div>
+          <figure class="scene" data-scene="display" aria-label="Headless with the guest agent, a console window, or GPU passthrough with Looking Glass">
+            <svg aria-hidden="true"></svg>
+          </figure>
+          <p class="footnote" data-reveal>Looking Glass is an independent open-source project by <a href="https://github.com/gnif/LookingGlass">Geoffrey McRae and contributors</a>. window-side sets up the VM around it and opens it for you.</p>
+        </div>
+      </section>
+
+      <section class="section" id="profiles">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>07</span> Boot profiles</p>
+            <h2>One GPU, one side<br />at a time.</h2>
+            <p>A graphics card passed through belongs to Windows completely. window-side adds a GPU entry beside your normal one in the boot loader. The normal profile keeps the card on Linux. The GPU profile reserves it at boot for <code>vfio-pci</code>, a driver that holds it for the VM. Switching is always an explicit reboot.</p>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Boot profile" data-reveal>
+            <button type="button" role="tab" aria-selected="true" data-act="profile" data-value="normal">Normal</button>
+            <button type="button" role="tab" aria-selected="false" data-act="profile" data-value="gpu">GPU</button>
+          </div>
+          <figure class="scene" data-scene="profile" aria-label="In the normal profile both graphics chips serve Linux. In the GPU profile the discrete card goes to Windows">
+            <svg aria-hidden="true"></svg>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="overview">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>08</span> Every day</p>
+            <h2>One calm window.</h2>
+            <p>Start, open and shut down Windows, watch its CPU, memory, GPU and network, and change settings in one place. Closing the window keeps window-side in the tray.</p>
+          </div>
+          <figure class="frame" data-reveal>
+            <video data-lazy muted loop playsinline preload="none" poster="/media/app/overview.webp" aria-label="The overview with live CPU, memory, GPU and network graphs">
+              <source data-src="/media/app/overview.webm" type='video/webm; codecs="av01.0.05M.08"' />
+              <source data-src="/media/app/overview.mp4" type="video/mp4" />
+            </video>
+          </figure>
+          <div class="trio">
+            <article data-reveal>
+              <div class="shot"><picture><source srcset="/media/app/settings-card.avif" type="image/avif" /><img src="/media/app/settings-card.webp" width="1230" height="590" alt="Settings with memory, threads, display, sign-in and appearance" loading="lazy" decoding="async" /></picture></div>
+              <h3>Settings</h3>
+              <p>Resources, display, sign-in and theme, in one place.</p>
+            </article>
+            <article data-reveal>
+              <div class="shot"><picture><source srcset="/media/native/tray-menu-tight.avif" type="image/avif" /><img src="/media/native/tray-menu-tight.webp" width="250" height="190" alt="The tray menu with start, open and quit" loading="lazy" decoding="async" /></picture></div>
+              <h3>Tray</h3>
+              <p>Close the window and Windows keeps running. The tray brings it back.</p>
+            </article>
+            <article data-reveal>
+              <div class="shot"><picture><source srcset="/media/native/panel-tight.avif" type="image/avif" /><img src="/media/native/panel-tight.webp" width="360" height="350" alt="The Omarchy panel with live usage and VM controls" loading="lazy" decoding="async" /></picture></div>
+              <h3>Omarchy panel</h3>
+              <p>An optional panel on Omarchy, with usage and quick controls.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="agents">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>09</span> Agents</p>
+            <h2>Give your agent<br />a Windows.</h2>
+            <p>Every <code>ws</code> command prints JSON. An agent can start Windows, run PowerShell, copy files and use SSH, and read structured results instead of screenshots. Setup itself can be handed to Claude Code, Codex or OpenCode, and the agent stays read-only until you approve the apply.</p>
+          </div>
+          <div class="agents">
+            <div class="prompt" data-reveal>
+              <p class="prompt-label"><span class="dot"></span> Ask your agent</p>
+              <p class="prompt-text" data-prompt aria-live="polite">Build the Windows release of this app and run its tests.</p>
+              <ol class="prompt-plan" data-plan aria-label="What your agent runs"><li>ws start</li><li>ws copy app.zip 'C:\build\app.zip'</li><li>ws exec --json '.\build.ps1 -Test'</li></ol>
+              <ul class="prompt-agents"><li>Claude Code</li><li>Codex</li><li>OpenCode</li></ul>
+            </div>
+            <div class="term" data-reveal>
+              <div class="term-bar"><i></i><i></i><i></i><span>ws</span></div>
+              <pre class="term-body" data-term><span class="term-cmd">$ ws status</span></pre>
+              <div class="term-tabs" role="tablist" aria-label="Commands" data-term-tabs></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="hosts">
+        <div class="wrap">
+          <div class="section-head center" data-reveal>
+            <p class="kicker"><span>10</span> Your Linux</p>
+            <h2>Made for the Linux<br />you already run.</h2>
+            <p>window-side is a general Linux app. It reads your distro, desktop and boot loader, installs packages with your own package manager, and offers the Omarchy panel only on Omarchy.</p>
+          </div>
+          <div class="hosts" data-reveal>
+            <article><h3>Distros</h3><ul><li><i></i>Arch</li><li><i class="unit"></i>Ubuntu, Debian</li><li><i class="unit"></i>Fedora</li></ul></article>
+            <article><h3>Desktops</h3><ul><li><i></i>Hyprland</li><li><i class="unit"></i>KDE Plasma</li><li><i class="unit"></i>GNOME</li></ul></article>
+            <article><h3>Boot loaders</h3><ul><li><i></i>Limine</li><li><i class="unit"></i>GRUB</li><li><i class="unit"></i>systemd-boot</li></ul></article>
+          </div>
+          <p class="legend" data-reveal><span><i></i>Tested end to end</span><span><i class="unit"></i>Unit and fixture tested</span></p>
+        </div>
+      </section>
+
+      <section class="get" id="get">
+        <div class="wrap get-inner">
+          <!--mark:get-mark-->
+          <h2>Bring Windows closer.</h2>
+          <p class="after">One command installs the app and the packages it needs. Run it again to update.</p>
+          <div class="getcard">
+            <div class="get-row">
+              <code data-command><b>$ </b>curl -fsSL https://raw.githubusercontent.com/Noelithub77/window-side/main/get.sh | bash</code>
+              <button class="copy" type="button" data-copy><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="3" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg><span data-copy-label>Copy</span></button>
+            </div>
+          </div>
+          <p class="links"><a href="https://github.com/Noelithub77/window-side/blob/main/docs/guide.md">Guide</a><a href="https://github.com/Noelithub77/window-side/releases">Releases</a><a href="https://github.com/Noelithub77/window-side">Source</a></p>
+          <a class="star" href="https://github.com/Noelithub77/window-side">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8Z" /></svg>
+            <span>If window-side saves you a reboot, a star on GitHub helps someone else find it.</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span><!--mark:foot-mark--> window-side · GPL-2.0-or-later</span>
+      <span class="egg">psst, type <kbd>o</kbd><kbd>p</kbd><kbd>e</kbd><kbd>n</kbd></span>
+    </footer>
+  </body>
+</html>
