@@ -111,6 +111,11 @@ pub enum SetupStep {
         #[command(subcommand)]
         action: FirstBootAction,
     },
+    /// Print missing VM packages as JSON; optionally install them through pkexec or sudo
+    Packages {
+        #[arg(long)]
+        install: bool,
+    },
     /// Install or repair the bundled Omarchy plugin, preserving existing symlinks
     Plugin,
     /// Print what was found as JSON
@@ -178,6 +183,10 @@ impl ChoiceArgs {
 
 fn run_setup(step: SetupStep) -> Result<i32> {
     match &step {
+        SetupStep::Packages { install } => {
+            println!("{}", serde_json::to_string(&setup::packages::run(*install)?)?);
+            return Ok(0);
+        },
         SetupStep::FirstBoot { action } => {
             let config = Config::load()?;
             match action {
@@ -218,7 +227,7 @@ fn run_setup(step: SetupStep) -> Result<i32> {
             println!("{}", serde_json::json!({"status": "applied", "notes": plan.notes}));
         }
         SetupStep::Root { .. } => bail!("setup root runs before detection"),
-        SetupStep::FirstBoot { .. } | SetupStep::Plugin => bail!("handled before detection"),
+        SetupStep::FirstBoot { .. } | SetupStep::Plugin | SetupStep::Packages { .. } => bail!("handled before detection"),
     }
     Ok(0)
 }

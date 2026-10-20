@@ -48,7 +48,15 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
    Root writes, initramfs generation and real reboots remain unverified; no boot
    writer or privileged setup command was run on this host. GRUB/systemd-boot
    twins stay on the setup kernel and need setup again after kernel changes.
-7. One-command install.
+7. One-command install. Done: `install.sh` updates the app and desktop entry,
+   calls `ws setup packages --install` for the single Rust package list, prints
+   environment facts and offers the optional Omarchy panel. `--yes`,
+   `--no-plugin` and `--dry-run` support unattended installs and previews;
+   skipped/declined panels are offered again. Machine setup stays in onboarding,
+   and the installer leaves opening the app to the user. `./ops check` and
+   `./ops test:install` cover fake package managers/privilege tools, idempotency,
+   failure retry, interactive panel choices and isolated prefixes. Real distro
+   package transactions remain unverified; no host package installation ran.
 
 Each step is committed separately with its verification. Ubuntu and Fedora
 checks run in containers (detection, package plans, generated boot files)

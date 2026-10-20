@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Installs the application only. Machine configuration stays behind ws setup.
+# Installs or updates the app and VM packages. Machine configuration stays in onboarding.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 prefix="${HOME:?}/.local"
 binary=''
 replace=false
 dry_run=false
+yes=false
+no_plugin=false
 while (( $# )); do
   case "$1" in
     --prefix|--binary)
@@ -14,18 +16,25 @@ while (( $# )); do
       shift 2 ;;
     --replace-existing) replace=true; shift ;;
     --dry-run) dry_run=true; shift ;;
+    --yes) yes=true; shift ;;
+    --no-plugin) no_plugin=true; shift ;;
     --help|-h)
       cat <<'HELP'
-Usage: ./install.sh [--binary FILE] [--prefix /absolute/path] [--replace-existing] [--dry-run]
+Usage: ./install.sh [--binary FILE] [--prefix /absolute/path] [--replace-existing]
+                    [--yes] [--no-plugin] [--dry-run]
 
-Builds the locked Rust release when --binary is omitted. Installs ws, a desktop
-entry and the license under PREFIX (default: ~/.local). Does not configure a VM,
-install packages, change boot entries, enable a plugin or launch a window.
+Builds the locked Rust release when --binary is omitted, then installs or updates
+ws, its desktop entry and the VM packages for Arch, Ubuntu/Debian or Fedora.
+Package installation uses the installed ws through pkexec or sudo. On Omarchy,
+asks whether to install or update the optional panel; declined/skipped panels
+are offered again next time. Machine configuration stays in ws setup.
 
-Unknown existing files or symlinks require --replace-existing. A backup is saved
-before replacement; the symlink target is never overwritten. Updates to files
-owned by a previous installation do not require this flag. --dry-run writes
-nothing and does not build. Results are JSON; progress goes to stderr.
+--yes accepts the panel without prompting. --no-plugin skips it even with --yes.
+Without a terminal, the panel is skipped unless --yes is supplied. --dry-run
+writes nothing, does not build, and only queries packages when a binary exists.
+Unknown existing files require --replace-existing; backups preserve symlink
+sources. Results are JSON; progress goes to stderr. Does not launch the app.
+
 HELP
       exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -116,9 +125,57 @@ if ! $dry_run; then
     update-desktop-database "$prefix/share/applications" >&2 || echo 'Installed; refreshing the optional desktop cache failed' >&2
   fi
 fi
+packages=null
+plugin='{"status":"not-applicable"}'
+if $dry_run; then
+  if [[ -x "$binary" ]]; then
+    packages=$("$binary" setup packages) || { echo 'Package preview failed' >&2; exit 1; }
+  else
+    echo 'Environment and package preview require a built ws binary; nothing was changed' >&2
+  fi
+  if command -v omarchy >/dev/null; then plugin='{"status":"would-ask"}'; fi
+  if $no_plugin; then plugin='{"status":"skipped"}'; fi
+else
+  packages=$("$prefix/bin/ws" setup packages --install) || {
+    echo 'ws was installed, but VM package setup failed. Rerun this command to retry.' >&2
+    exit 1
+  }
+  if command -v omarchy >/dev/null; then
+    choice_file="${XDG_STATE_HOME:-$HOME/.local/state}/window-side/install-plugin-choice"
+    previous_choice=''
+    if [[ -f "$choice_file" && ! -L "$choice_file" ]]; then read -r previous_choice < "$choice_file" || true; fi
+    install_plugin=$yes
+    choice=skipped
+    if $no_plugin; then
+      install_plugin=false
+    elif ! $yes && [[ -t 0 ]]; then
+      if [[ "$previous_choice" == declined || "$previous_choice" == skipped ]]; then
+        printf 'Omarchy panel was %s last time. Install it now? [y/N] ' "$previous_choice" >&2
+      else
+        printf 'Install the optional Omarchy panel? [y/N] ' >&2
+      fi
+      reply=''
+      read -r reply || true
+      case "$reply" in y|Y|yes|Yes) install_plugin=true ;; *) choice=declined ;; esac
+    elif ! $yes; then
+      echo 'Omarchy panel skipped without a terminal; rerun with --yes to install it.' >&2
+    fi
+    if $install_plugin; then
+      plugin=$("$prefix/bin/ws" setup plugin) || { echo 'Omarchy panel setup failed; rerun this command to retry.' >&2; exit 1; }
+      choice=installed
+    else
+      plugin="{\"status\":\"$choice\"}"
+    fi
+    choice_dir=$(dirname -- "$choice_file")
+    mkdir -p -m 700 -- "$choice_dir"
+    choice_temporary=$(mktemp "$choice_dir/.plugin-choice.XXXXXXXX")
+    printf '%s\n' "$choice" > "$choice_temporary"
+    mv -Tf -- "$choice_temporary" "$choice_file"
+  fi
+fi
 printf '{"environment":"local-install","applied":%s,"prefix":' "$(! $dry_run && echo true || echo false)"
 json_string "$prefix"
 printf ',"binary":'; json_string "$binary"
 printf ',"version":'; json_string "$version"
 printf ',"backup":'; json_string "$backup"
-printf '}\n'
+printf ',"packages":%s,"plugin":%s}\n' "$packages" "$plugin"

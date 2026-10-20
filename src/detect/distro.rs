@@ -32,13 +32,10 @@ const FIRMWARE: [(&str, &str); 3] =
     [("/usr/share/edk2/x64", "edk2-ovmf"), ("/usr/share/OVMF", "ovmf"), ("/usr/share/edk2/ovmf", "edk2-ovmf")];
 
 pub fn parse(os_release: &str) -> Option<Family> {
-    let ids: Vec<&str> = os_release
-        .lines()
-        .filter_map(|line| line.strip_prefix("ID=").or_else(|| line.strip_prefix("ID_LIKE=")))
-        .flat_map(|value| value.trim_matches('"').split_whitespace())
-        .collect();
-    // ID comes first in the file, so a distro's own family wins over what it is like.
-    ids.iter().find_map(|id| match *id {
+    let value = |key: &str| os_release.lines().find_map(|line| line.strip_prefix(key))
+        .map(|value| value.trim().trim_matches(['"', '\''])).unwrap_or_default();
+    let ids = value("ID=").split_whitespace().chain(value("ID_LIKE=").split_whitespace());
+    ids.into_iter().find_map(|id| match id {
         "arch" => Some(Family::Arch),
         "debian" | "ubuntu" => Some(Family::Debian),
         "fedora" | "rhel" | "centos" => Some(Family::Fedora),
@@ -54,6 +51,18 @@ pub fn detect() -> Option<Family> {
 }
 
 impl Family {
+    pub fn name(self) -> &'static str {
+        match self { Self::Arch => "arch", Self::Debian => "debian", Self::Fedora => "fedora" }
+    }
+
+    pub fn required_packages(self) -> Vec<&'static str> {
+        let mut packages = Vec::new();
+        for package in REQUIREMENTS.iter().flat_map(|(_, packages)| packages[self.index()].iter().copied()).chain([self.firmware_package()]) {
+            if !packages.contains(&package) { packages.push(package); }
+        }
+        packages
+    }
+
     fn index(self) -> usize {
         match self {
             Self::Arch => 0,
@@ -114,6 +123,7 @@ mod tests {
         assert_eq!(parse("NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n"), Some(Family::Debian));
         assert_eq!(parse("ID=neon\nID_LIKE=\"ubuntu debian\"\n"), Some(Family::Debian));
         assert_eq!(parse("ID=fedora\n"), Some(Family::Fedora));
+        assert_eq!(parse("ID_LIKE=debian\nID=arch\n"), Some(Family::Arch));
         assert_eq!(parse("ID=arch\n"), Some(Family::Arch));
         assert_eq!(parse("ID=endeavouros\nID_LIKE=arch\n"), Some(Family::Arch));
         assert_eq!(parse("ID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n"), None);
@@ -127,6 +137,9 @@ mod tests {
                 assert!(family.packages(command).iter().all(|package| family.known(package)));
             }
             assert!(family.known(family.firmware_package()));
+            assert!(family.required_packages().iter().all(|package| family.known(package)));
+            let packages = family.required_packages();
+            assert_eq!(packages.iter().collect::<std::collections::BTreeSet<_>>().len(), packages.len());
             assert!(!family.known("sudo"));
         }
         assert!(!Family::Fedora.known("qemu-base"));

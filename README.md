@@ -27,7 +27,20 @@ this version's scope.
 
 ## Install
 
-From a release archive, extract it and run `./install.sh`. From source:
+Extract a release archive, then run one command to install or update the app,
+its desktop entry and missing VM packages:
+
+```sh
+./install.sh
+```
+
+On Omarchy it also offers the optional panel. Rerunning the same command updates
+`ws`, checks packages again and offers anything previously skipped or declined.
+It prints the detected distro family, desktop and Omarchy status. Packages use
+Arch's pacman, Ubuntu/Debian's apt-get or Fedora's dnf through pkexec or sudo;
+administrator authentication is still required.
+
+From source:
 
 ```sh
 git clone https://github.com/Noelithub77/window-side.git
@@ -42,8 +55,9 @@ Arch are `base-devel`, `rust`, `clang`, `cmake`, `pkgconf`, `libxcb`,
 and `vulkan-icd-loader`. A working Vulkan driver is needed for the window.
 
 The installer puts the binary and application entry under `~/.local` and
-preserves machine configuration. It does not start a VM, install packages or
-change boot entries. The setup window detects Windows partitions and graphics,
+preserves machine configuration. VM creation and boot entry changes remain in
+onboarding; installation does not start a VM or open the app. The setup window
+detects Windows partitions and graphics,
 lets you choose resources, and reviews machine changes before administrator
 approval. GPU boot profiles support Limine with mkinitcpio, Ubuntu/Debian GRUB with
 initramfs-tools, Fedora GRUB with dracut/BLS, and systemd-boot Type 1 entries.
@@ -56,10 +70,18 @@ changing kernels before selecting that GPU profile.
 Useful installer options:
 
 ```sh
-./install.sh --dry-run
+./install.sh --yes                 # Accept the optional panel without a prompt
+./install.sh --yes --no-plugin     # Install packages and app, skip the panel
+./install.sh --dry-run             # No build, writes, package install or plugin change
 ./install.sh --binary /path/to/ws --prefix /absolute/prefix
 ./install.sh --binary /path/to/ws --replace-existing
 ```
+
+Without a terminal the panel is skipped unless `--yes` is supplied. A skipped
+panel is offered again on the next interactive run. To inspect or repair only
+VM packages, use `ws setup packages` (JSON) or `ws setup packages --install`.
+Package lists live in `src/detect/distro.rs`; the shell installer delegates to
+the installed `ws`. A dry run can query packages only when a built binary exists.
 
 Unknown existing files require `--replace-existing`. Backups go under
 `~/.local/state/window-side/install-backups`; links are replaced themselves,
@@ -99,8 +121,8 @@ force-stops Windows. Completion is saved only after the post-transition guest
 agent answers; unqueried driver readings are null.
 
 `ws setup plugin` installs the bundled Omarchy panel. Existing directory or
-file symlinks report `managed-externally` and stay intact. The installer does
-not install or enable the panel automatically.
+file symlinks report `managed-externally` and stay intact. The installer offers
+the panel on Omarchy, or accepts it with `--yes`; `--no-plugin` always skips it.
 
 ## Configuration
 

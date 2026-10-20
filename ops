@@ -30,6 +30,7 @@ HELP
     cargo clippy -j 2 --all-targets -- -D warnings
     cargo build -j 2
     bash "$root/tests/first-boot.sh"
+    bash "$root/tests/packages.sh"
     exec bash "$root/tests/install.sh"
     ;;
   check:release)
@@ -37,6 +38,7 @@ HELP
     cargo clippy --release --locked -j 2 --all-targets -- -D warnings
     cargo build --release --locked -j 2
     WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/first-boot.sh"
+    WS_TEST_BINARY="$root/target/release/ws" bash "$root/tests/packages.sh"
     exec bash "$root/tests/install.sh"
     ;;
   test:install) exec bash "$root/tests/install.sh" ;;

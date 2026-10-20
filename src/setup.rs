@@ -3,6 +3,7 @@ pub mod boot;
 pub mod domain;
 pub mod files;
 pub mod root;
+pub mod packages;
 
 use crate::config::{Boot, Config, Disk, DiskMode, Gpu, Vm, Windows, home};
 use crate::detect::disks::WindowsInstall;
