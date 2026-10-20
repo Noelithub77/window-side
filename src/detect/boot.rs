@@ -97,7 +97,7 @@ fn selected_systemd() -> Option<String> {
     let variable = fs::read_dir("/sys/firmware/efi/efivars").ok()?.flatten()
         .find(|entry| entry.file_name().to_string_lossy().starts_with("LoaderEntrySelected-"))?;
     let bytes = fs::read(variable.path()).ok()?;
-    let units: Vec<u16> = bytes.get(4..)?.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+    let units: Vec<u16> = bytes.get(4..)?.as_chunks::<2>().0.iter().map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .take_while(|unit| *unit != 0).collect();
     String::from_utf16(&units).ok().filter(|name| name.ends_with(".conf") && safe_name(name))
 }

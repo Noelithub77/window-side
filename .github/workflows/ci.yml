@@ -64,6 +64,7 @@ jobs:
         with:
           key: arch-${{ (github.ref_type == 'tag' || inputs.release) && 'release' || 'debug' }}
           cache-workspace-crates: true
+          cache-on-failure: true
           save-if: ${{ github.ref_type != 'tag' }}
       - name: Check the selected profile
         env:
