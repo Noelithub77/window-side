@@ -97,3 +97,18 @@ Windows exclusive use of the selected GPU until Linux reboots normally.
 Looking Glass requires a client matching the embedded IDD build; `ws
 looking-glass-setup` installs the guest side. Host reboot is explicit.
 
+## Agent skills
+
+[`skills/`](../skills) holds three agent skills: `window-side` (run Windows and
+its shells), `windows-app-testing` (build, install and test Windows software)
+and `window-side-setup` (setup and first boot). `ws` bundles the same files:
+
+```sh
+ws skills            # where each skill lives and whether it matches this ws
+ws skills install    # write missing or outdated copies
+```
+
+Skills go to `~/.agents/skills` (Codex and OpenCode) and, when Claude Code is
+installed, `~/.claude/skills`. A skill folder or file that is a symlink reports
+`linked` and is left alone. Without `ws`, `npx skills add
+Noelithub77/window-side -g` installs them from the repository.

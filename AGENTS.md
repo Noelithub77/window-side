@@ -31,11 +31,13 @@ src/
   first_boot.rs          SATA to VirtIO first boot with rollback
   host.rs                boot profile, GPU checks, hostdev XML, reboot into an entry
   agents.rs              detects Claude Code, Codex, OpenCode for agent setup
+  skills.rs              bundles `skills/` and installs it with `ws skills`
   notify.rs, process.rs  notifications and command helpers
   app.rs, app/           Tauri commands, types, fixtures, metrics, tray, single instance
 ui/src/                  React screens, components, styles, browser mocks
 ui/src/bindings.ts        Generated Rust command/type bindings
 ui/tests/                Playwright Chromium interaction tests
+skills/                  agent skills (SKILL.md), bundled into `ws`
 site/                    Landing page (Vite, GSAP, rough.js, WebGL), deployed with cf
 assets/                  guest PowerShell, Omarchy plugin, illustrations, agent prompt
 scripts/, tests/         GUI, installer, first-boot and guest checks

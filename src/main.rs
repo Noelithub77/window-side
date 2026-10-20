@@ -12,6 +12,7 @@ mod host;
 mod notify;
 mod process;
 mod setup;
+mod skills;
 mod vm;
 
 use clap::Parser;

@@ -25,7 +25,8 @@ The installer verifies the release checksum, installs the app and any missing VM
 - **One calm window.** Start, open and stop Windows from the app or the tray, with live CPU, memory, GPU and network.
 - **Your real GPU.** Pass your graphics card to Windows for near-native speed, shown in a Linux window through [Looking Glass](https://looking-glass.io/). A normal boot gives the card back to Linux.
 - **Signed in for you.** Your Windows password stays in the Linux keyring and is typed in when Windows starts.
-- **SSH and agents.** Key-only SSH, PowerShell, file copies, metrics and updates, all as JSON from `ws`.
+- **Test Windows apps from Linux.** Key-only SSH, PowerShell, file copies, metrics and updates, all as JSON from `ws`.
+- **Agent skills.** Bundled skills teach Claude Code, Codex and OpenCode to run, test on and set up Windows.
 - **Guided setup.** It finds your drive and GPU, shows every file it will write, then asks for your password once.
 
 ```sh
@@ -35,6 +36,8 @@ ws ssh --get 'C:/Logs/setup.log' .
 ws metrics
 ws stop
 ```
+
+Install the skills with `ws skills install`, or from this repo with `npx skills add Noelithub77/window-side -g`.
 
 ## Status
 

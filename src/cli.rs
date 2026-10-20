@@ -94,6 +94,11 @@ pub enum Action {
         #[arg(long)]
         json: bool,
     },
+    /// Agent skills for Claude Code, Codex and OpenCode: status or install
+    Skills {
+        #[arg(value_enum, default_value_t = crate::skills::SkillsAction::Status)]
+        action: crate::skills::SkillsAction,
+    },
     /// Type the keyring credential at the Windows sign-in screen
     SignIn {
         #[arg(value_enum, default_value_t = SignInAction::Run)]
@@ -281,6 +286,7 @@ pub fn run(action: Action) -> Result<i32> {
         }
         Action::Setup { step } => return run_setup(step),
         Action::Config { action } => return crate::config::edit::run(action),
+        Action::Skills { action } => return crate::skills::run(action),
         _ => {}
     }
     let config = Config::load()?;
@@ -321,7 +327,9 @@ pub fn run(action: Action) -> Result<i32> {
             let program = std::env::current_exe().context("Could not find the ws binary")?;
             return Err(Command::new("pkexec").arg(program).args(["reboot-root", entry]).exec()).context("Could not run pkexec");
         }
-        Action::RebootRoot { .. } | Action::Setup { .. } | Action::Config { .. } => bail!("handled before loading the config"),
+        Action::RebootRoot { .. } | Action::Setup { .. } | Action::Config { .. } | Action::Skills { .. } => {
+            bail!("handled before loading the config")
+        }
         Action::LookingGlass => looking_glass::open(&config, profile)?,
         Action::LookingGlassSetup => println!("{}", looking_glass::install(&config)?),
         Action::Drivers => drivers::attach(domain)?,
