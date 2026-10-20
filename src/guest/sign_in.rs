@@ -1,11 +1,11 @@
 //! Signs in to Windows by typing a Linux keyring credential on the VM's virtual keyboard.
 use crate::guest::agent::signed_in_user;
-use crate::process::output;
 use crate::vm::virsh;
 use anyhow::{Context, Result, bail};
+use oo7::Keyring;
 use serde_json::{Value, json};
-use std::io::{IsTerminal, Write};
-use std::process::{Command, Stdio};
+use std::io::{BufRead, IsTerminal, Write};
+use std::process::Command;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -47,18 +47,26 @@ fn virsh_script(domain: &str, credential: &str) -> Result<String> {
     Ok(lines.join("\n"))
 }
 
-fn attributes(user: &str) -> [&str; 6] {
-    ["application", "window-side", "purpose", "console-login", "user", user]
+const LABEL: &str = "window-side VM sign-in";
+
+fn attributes(user: &str) -> [(&str, &str); 3] {
+    [("application", "window-side"), ("purpose", "console-login"), ("user", user)]
 }
 
-fn stored_credential(user: &str) -> String {
-    let mut args = vec!["lookup"];
-    args.extend(attributes(user));
-    output("secret-tool", &args)
-        .ok()
-        .filter(|result| result.status.success())
-        .map(|result| String::from_utf8_lossy(&result.stdout).trim_end_matches('\n').to_owned())
-        .unwrap_or_default()
+/// The default Secret Service collection, unlocked; the desktop may ask for the login password.
+async fn keyring() -> Result<Keyring> {
+    let keyring = Keyring::new().await.context("No keyring is available; install GNOME Keyring or KWallet")?;
+    keyring.unlock().await.context("The keyring stayed locked")?;
+    Ok(keyring)
+}
+
+fn stored_credential(user: &str) -> Result<String> {
+    zbus::block_on(async {
+        let Some(item) = keyring().await?.search_items(&attributes(user)).await?.into_iter().next() else {
+            return Ok(String::new());
+        };
+        String::from_utf8(item.secret().await?.to_vec()).context("The stored credential is not text")
+    })
 }
 
 /// Types the credential only when nobody is signed in and one is stored.
@@ -67,7 +75,7 @@ pub fn run(domain: &str, user: &str, wait: Duration) -> Result<Value> {
     if !current.is_empty() {
         return Ok(json!({"status": "signed-in", "user": current, "typed": false}));
     }
-    let credential = stored_credential(user);
+    let credential = stored_credential(user)?;
     if credential.is_empty() {
         return Ok(json!({"status": "no-credential", "typed": false}));
     }
@@ -87,60 +95,43 @@ pub fn run(domain: &str, user: &str, wait: Duration) -> Result<Value> {
     Ok(json!({"status": "not-signed-in", "typed": true}))
 }
 
-/// Lets secret-tool prompt in the terminal so the credential never passes through ws.
+/// Reads the credential in the terminal without echoing it.
 pub fn store_interactively(user: &str) -> Result<()> {
     if !std::io::stdin().is_terminal() {
-        bail!("Run this in a terminal; secret-tool prompts for the Windows password.");
+        bail!("Run this in a terminal; it prompts for the Windows password.");
     }
-    println!("Enter the Windows sign-in password or PIN. It goes straight to your Linux keyring.");
-    let status = Command::new("secret-tool")
-        .arg("store")
-        .arg("--label=window-side VM sign-in")
-        .args(attributes(user))
-        .status()
-        .context("Could not run secret-tool")?;
-    if !status.success() {
-        bail!("secret-tool did not store the credential");
+    print!("Windows password or PIN (kept in your Linux keyring): ");
+    std::io::stdout().flush()?;
+    let echo = |flag: &str| Command::new("stty").arg(flag).status().is_ok_and(|status| status.success());
+    let hidden = echo("-echo");
+    let mut line = String::new();
+    let read = std::io::stdin().lock().read_line(&mut line);
+    if hidden {
+        echo("echo");
     }
-    if let Err(error) = virsh_script("check", &stored_credential(user)) {
-        forget(user)?;
-        return Err(error);
-    }
-    Ok(())
+    println!();
+    read?;
+    store(user, line.trim_end_matches(['\n', '\r']))
 }
 
 pub fn is_stored(user: &str) -> bool {
-    !stored_credential(user).is_empty()
+    stored_credential(user).is_ok_and(|credential| !credential.is_empty())
 }
 
-/// Stores a credential typed into the window. It reaches secret-tool on stdin, never on argv.
+/// Stores a credential once the virtual keyboard can type every character of it.
 pub fn store(user: &str, credential: &str) -> Result<()> {
     if credential.is_empty() {
         bail!("Enter the Windows password or PIN.");
     }
     virsh_script("check", credential)?;
-    let mut child = Command::new("secret-tool")
-        .arg("store")
-        .arg("--label=window-side VM sign-in")
-        .args(attributes(user))
-        .stdin(Stdio::piped())
-        .spawn()
-        .context("Could not run secret-tool")?;
-    child
-        .stdin
-        .take()
-        .context("Could not open secret-tool input")?
-        .write_all(credential.as_bytes())?;
-    if !child.wait()?.success() {
-        bail!("secret-tool did not store the credential");
-    }
-    Ok(())
+    zbus::block_on(async {
+        let keyring = keyring().await?;
+        keyring.create_item(LABEL, &attributes(user), credential, true).await.context("The keyring did not store the credential")
+    })
 }
 
 pub fn forget(user: &str) -> Result<()> {
-    let mut args = vec!["clear"];
-    args.extend(attributes(user));
-    crate::process::text("secret-tool", &args).map(drop)
+    zbus::block_on(async { keyring().await?.delete(&attributes(user)).await.context("Could not remove the credential") })
 }
 
 #[cfg(test)]

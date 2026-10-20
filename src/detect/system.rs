@@ -1,6 +1,6 @@
 //! CPU, memory, boot loader and tool facts that shape the VM and the GPU boot profile.
 use super::distro::{self, Family};
-use crate::display::hyprland;
+use crate::display::desktop;
 use crate::process::{has_command, text};
 use serde::Serialize;
 use std::fs;
@@ -86,7 +86,7 @@ pub fn detect() -> System {
         iommu_enabled: fs::read_dir("/sys/kernel/iommu_groups").is_ok_and(|mut groups| groups.next().is_some()),
         iommu_flag: if cpuinfo.contains("AuthenticAMD") { "amd_iommu=on" } else { "intel_iommu=on" },
         limine_kernel: limine_kernel(),
-        refresh_hz: hyprland::refresh_rate().unwrap_or_else(|| "60".to_owned()),
+        refresh_hz: desktop::refresh_rate(),
         user: std::env::var("USER").unwrap_or_default(),
         omarchy: has_command("omarchy"),
         distro: family,

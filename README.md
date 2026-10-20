@@ -14,7 +14,11 @@ VM, machine setup, guest commands and optional Omarchy panel around it.
 
 ## Current status
 
-Prerelease for Arch Linux x86_64, with UEFI Windows and libvirt/KVM. The existing
+Prerelease for x86_64 with UEFI Windows and libvirt/KVM. Setup installs
+packages on Arch, Ubuntu/Debian and Fedora, and the app raises its windows and
+reads the refresh rate on Hyprland, KDE Plasma and GNOME. Only Arch with
+Hyprland has been run end to end; the Ubuntu, Fedora, KDE and GNOME paths are
+covered by unit tests so far. The existing
 Windows VM, CLI, installation and isolated native interface have been checked.
 Fresh Windows provisioning, the SATA-to-VirtIO transition, same-drive virtual
 disk assembly and native-boot compatibility remain unverified end to end.
@@ -141,8 +145,8 @@ SSH uses the configured user, an existing key and strict host-key trust;
 server provisioning is separate. Neither shell path automatically enters the
 visible Windows desktop. GUI automation needs a signed-in interactive session.
 
-`ws sign-in setup` optionally stores a console credential in the Linux login
-keyring from a terminal. Native Windows auto-login stays off. Starting the VM
+`ws sign-in setup` or Settings optionally stores a console credential in the
+Linux login keyring (GNOME Keyring or KDE Wallet). Native Windows auto-login stays off. Starting the VM
 from an unlocked Linux session can then open the Windows desktop.
 
 The normal host profile keeps the GPU on Linux. The passthrough profile gives

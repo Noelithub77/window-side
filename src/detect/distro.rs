@@ -19,7 +19,6 @@ const REQUIREMENTS: &[(&str, [&[&str]; 3])] = &[
     ("swtpm_setup", [&["swtpm"], &["swtpm-tools"], &["swtpm-tools"]]),
     ("dnsmasq", [&["dnsmasq"], &["dnsmasq-base"], &["dnsmasq"]]),
     ("virt-viewer", [&["virt-viewer"], &["virt-viewer"], &["virt-viewer"]]),
-    ("secret-tool", [&["libsecret"], &["libsecret-tools"], &["libsecret"]]),
     ("xorriso", [&["libisoburn"], &["xorriso"], &["xorriso"]]),
     ("bsdtar", [&["libarchive"], &["libarchive-tools"], &["bsdtar"]]),
     ("udisksctl", [&["udisks2"], &["udisks2"], &["udisks2"]]),

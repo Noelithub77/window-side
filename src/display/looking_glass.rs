@@ -1,6 +1,6 @@
 //! Looking Glass shows Windows from the passed-through GPU through shared memory.
 use crate::config::{Config, cache_dir};
-use crate::display::hyprland::{class_is, focus};
+use crate::display::desktop::{self, Target};
 use crate::guest::agent::{GUEST_DIR, powershell_ok, write_file};
 use crate::host::Profile;
 use crate::notify::{self, Urgency};
@@ -26,9 +26,11 @@ pub fn open(config: &Config, profile: Profile) -> Result<()> {
         bail!("Start Windows before opening Looking Glass.");
     }
     require("looking-glass-client")?;
-    if focus(|client| class_is(client, "looking-glass-client")) {
+    let target = Target { program: "looking-glass-client", classes: &["looking-glass-client"], name: None };
+    if desktop::raise(&target) {
         return Ok(());
     }
+    desktop::close(&target);
     Command::new("systemd-run")
         .args(["--user", "--collect", "--quiet", "--service-type=exec", "looking-glass-client", "-f", SHARED_MEMORY])
         .status()

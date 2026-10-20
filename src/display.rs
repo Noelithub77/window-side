@@ -1,3 +1,6 @@
 pub mod console;
-pub mod hyprland;
+pub mod desktop;
+mod gnome;
+mod hyprland;
+mod kde;
 pub mod looking_glass;

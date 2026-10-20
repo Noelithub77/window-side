@@ -30,7 +30,12 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
    Unknown distros get a clear "install these commands" message instead of
    a package install. Ubuntu needs no AppArmor file: libvirt's `virt-aa-helper`
    is expected to allow the `<shmem>` device (unverified on Ubuntu).
-3. Desktop layer: focus and refresh rate on Hyprland, KDE and GNOME.
+3. Desktop layer: focus and refresh rate on Hyprland, KDE and GNOME. Done.
+   KDE raises windows with a KWin script over D-Bus and reads rates from
+   `kscreen-doctor -j`; GNOME reads rates from Mutter and reopens the viewer
+   because it has no API to raise another app's window. `oo7` and
+   `notify-rust` replace `secret-tool` and `notify-send`. KDE and GNOME paths
+   are untested on those desktops.
 4. GPU usage in guest metrics.
 5. Tray.
 6. GRUB and systemd-boot GPU profiles with initramfs-tools and dracut.

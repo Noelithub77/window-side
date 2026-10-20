@@ -36,10 +36,9 @@ pub fn class_is(client: &Value, class: &str) -> bool {
     client["class"].as_str() == Some(class)
 }
 
-/// Highest refresh rate among connected monitors, formatted as Windows expects (e.g. `165.003`).
-pub fn refresh_rate() -> Option<String> {
+/// Highest refresh rate among connected monitors.
+pub fn refresh_rate() -> Option<f64> {
     let monitors = text("hyprctl", &["monitors", "-j"]).ok()?;
     let Value::Array(monitors) = serde_json::from_str::<Value>(&monitors).ok()? else { return None };
-    let rate = monitors.iter().filter_map(|monitor| monitor["refreshRate"].as_f64()).fold(0.0_f64, f64::max);
-    (rate > 0.0).then(|| format!("{rate:.3}"))
+    monitors.iter().filter_map(|monitor| monitor["refreshRate"].as_f64()).reduce(f64::max)
 }

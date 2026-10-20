@@ -7,11 +7,11 @@ trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture/bin" "$fixture/config/window-side" "$fixture/state/window-side"
 export HOME="$fixture" XDG_CONFIG_HOME="$fixture/config" XDG_STATE_HOME="$fixture/state"
 export PATH="$fixture/bin:$PATH" WS_TEST_LOG="$fixture/virsh.log"
-unset DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE
-for notifier in omarchy notify-send; do
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture/bin/$notifier"
-  chmod +x "$fixture/bin/$notifier"
-done
+# A bus that does not exist keeps notifications and keyring calls off the real session.
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$fixture/no-bus" XDG_RUNTIME_DIR="$fixture"
+unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture/bin/omarchy"
+chmod +x "$fixture/bin/omarchy"
 export WS_TEST_STATE='shut off' WS_TEST_AGENT=0
 export WS_TEST_REPORT='{"user":"PC\\tester","storageReady":false,"networkReady":true,"applied":false}'
 cat > "$fixture/bin/virsh" <<'MOCK'
