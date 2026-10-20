@@ -3,18 +3,22 @@ mod assets;
 mod configuration;
 mod first_boot;
 mod fixture;
+mod instance;
 mod model;
 mod overview;
 mod review;
 mod settings;
 mod steps;
 mod theme;
+mod tray;
 mod views;
 mod welcome;
 mod widgets;
 mod wizard;
 
-use crate::{agents::{self, Agent}, config::Config, setup};
+use crate::notify::{self, Urgency};
+use crate::vm::virsh;
+use crate::{agents::{self, Agent}, cli, config::Config, setup};
 use gpui_kit::component::{
     ActiveTheme, Theme, TitleBar,
     input::InputState,
@@ -25,9 +29,16 @@ use model::{Detection, History, Metrics};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
+    mpsc::{self, Receiver},
 };
 use std::time::Duration;
 use theme::Appearance;
+use tray::{Command, TrayHandle};
+
+/// Synthetic hardware for the isolated GUI tests; debug builds only.
+fn fixture_mode() -> Option<String> {
+    if cfg!(debug_assertions) { std::env::var("WS_GUI_FIXTURE").ok() } else { None }
+}
 
 #[derive(Clone, Copy)]
 enum Resource {
@@ -88,11 +99,7 @@ actions!(window_side, [Refresh, NextStep, PreviousStep, Quit]);
 
 impl WindowSide {
     fn new(window: &mut Window, appearance: Appearance, cx: &mut Context<Self>) -> Self {
-        let fixture_mode = if cfg!(debug_assertions) {
-            std::env::var("WS_GUI_FIXTURE").ok()
-        } else {
-            None
-        };
+        let fixture_mode = fixture_mode();
         let fixture = fixture_mode.is_some();
         let mut view = Self {
             config: None,
@@ -339,10 +346,85 @@ impl Render for WindowSide {
     }
 }
 
+fn open_main(appearance: Appearance, cx: &mut App) -> Result<()> {
+    // Window geometry is a platform boundary; content uses the rem scale.
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(920.), px(680.)), cx))),
+        window_min_size: Some(size(px(720.), px(540.))),
+        app_id: Some("window-side".into()),
+        titlebar: Some(TitlebarOptions { title: Some("window-side".into()), ..TitleBar::title_bar_options() }),
+        ..TitleBar::window_options()
+    };
+    gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| WindowSide::new(window, appearance, cx)))?;
+    cx.activate(true);
+    Ok(())
+}
+
+/// Brings the window forward, reopening it when it was closed to the tray.
+fn show_main(cx: &mut App) {
+    if let Some(window) = cx.windows().first() {
+        let _ = window.update(cx, |_, window, _| window.activate_window());
+    } else if let Err(error) = open_main(Appearance::load(), cx) {
+        notify::send(Urgency::Normal, &format!("Could not open window-side: {error:#}"));
+    }
+}
+
+/// Handles tray and second-launch requests and keeps the tray's Windows state current.
+fn serve(commands: Receiver<Command>, tray: Option<TrayHandle>, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let mut tick = 0_u32;
+        loop {
+            while let Ok(command) = commands.try_recv() {
+                match command {
+                    Command::Window => cx.update(show_main),
+                    Command::Quit => cx.update(|cx| cx.quit()),
+                    Command::Run(label, action) => cx
+                        .background_executor()
+                        .spawn(async move {
+                            match cli::run(action) {
+                                Ok(0) => {}
+                                Ok(code) => notify::send(Urgency::Normal, &format!("{label} exited with code {code}")),
+                                Err(error) => notify::send(Urgency::Normal, &format!("{label} failed: {error:#}")),
+                            }
+                        })
+                        .detach(),
+                }
+            }
+            if let Some(tray) = tray.as_ref().filter(|_| tick.is_multiple_of(25)) {
+                let (status, configured) = cx
+                    .background_executor()
+                    .spawn(async {
+                        Config::load().map_or_else(|_| (String::new(), false), |config| (virsh::state(&config.vm.name), true))
+                    })
+                    .await;
+                tray.update(status, configured);
+            }
+            tick = tick.wrapping_add(1);
+            cx.background_executor().timer(Duration::from_millis(200)).await;
+        }
+    })
+    .detach();
+}
+
 pub fn run() -> bool {
+    let fixture = fixture_mode().is_some();
+    let (sender, commands) = mpsc::channel();
+    let instance = if fixture {
+        None
+    } else {
+        match instance::claim(sender.clone()) {
+            Ok(Some(connection)) => Some(connection),
+            Ok(None) => return true,
+            Err(error) => {
+                eprintln!("window-side: running without single-instance support: {error:#}");
+                None
+            }
+        }
+    };
     let failed = Arc::new(AtomicBool::new(false));
     let window_failed = failed.clone();
-    application().with_assets(assets::AppAssets).run(move |cx| {
+    // The window-closed handler decides when to quit, so the app can stay in the tray.
+    application().with_assets(assets::AppAssets).with_quit_mode(QuitMode::Explicit).run(move |cx| {
         gpui_kit::init(cx);
         let mut appearance = Appearance::load();
         if let Err(error) = appearance.apply(cx) {
@@ -357,35 +439,24 @@ pub fn run() -> bool {
             KeyBinding::new("alt-right", NextStep, Some("WindowSide")),
             KeyBinding::new("alt-left", PreviousStep, Some("WindowSide")),
         ]);
-        // Window geometry is a platform boundary; content uses the rem scale.
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                None,
-                size(px(920.), px(680.)),
-                cx,
-            ))),
-            window_min_size: Some(size(px(720.), px(540.))),
-            app_id: Some("window-side".into()),
-            titlebar: Some(TitlebarOptions {
-                title: Some("window-side".into()),
-                ..TitleBar::title_bar_options()
-            }),
-            ..TitleBar::window_options()
-        };
-        if let Err(error) = gpui_kit::open_window(options, cx, |window, cx| {
-            cx.new(|cx| WindowSide::new(window, appearance, cx))
-        }) {
+        if let Err(error) = open_main(appearance, cx) {
             eprintln!("window-side window: {error:#}");
             window_failed.store(true, Ordering::Relaxed);
             cx.quit();
+            return;
         }
-        cx.on_window_closed(|cx, _| {
-            if cx.windows().is_empty() {
+        let tray = if fixture { None } else { tray::start(sender) };
+        let in_tray = tray.as_ref().map(|tray| tray.online.clone());
+        // Closing the window keeps the app in the tray only while a bar shows it.
+        cx.on_window_closed(move |cx, _| {
+            // Holding the connection keeps the session name for the app's lifetime.
+            let _ = &instance;
+            if cx.windows().is_empty() && !in_tray.as_ref().is_some_and(|online| online.load(Ordering::Relaxed)) {
                 cx.quit();
             }
         })
         .detach();
-        cx.activate(true);
+        serve(commands, tray, cx);
     });
     !failed.load(Ordering::Relaxed)
 }

@@ -39,15 +39,20 @@ pub(super) struct Metrics {
     updates: Option<Updates>,
 }
 
+/// Short label for a libvirt domain state.
+pub(super) fn state_label(status: &str) -> &'static str {
+    match status {
+        "running" => "Running",
+        "shut off" => "Stopped",
+        "paused" => "Paused",
+        "in shutdown" => "Stopping",
+        _ => "Unavailable",
+    }
+}
+
 impl Metrics {
     pub(super) fn state(&self) -> &str {
-        match self.status.as_str() {
-            "running" => "Running",
-            "shut off" => "Stopped",
-            "paused" => "Paused",
-            "in shutdown" => "Stopping",
-            _ => "Unavailable",
-        }
+        state_label(&self.status)
     }
 
     pub(super) fn running(&self) -> bool {

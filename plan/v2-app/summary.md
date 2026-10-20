@@ -38,7 +38,9 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
    are untested on those desktops.
 4. GPU usage in guest metrics. Done; parsed and checked with sample counters,
    not yet read from a running Windows guest.
-5. Tray.
+5. Tray. Done: ksni item with state, start, open, shut down, the window
+   and quit; closing keeps the app in the tray only while a bar hosts it.
+   A second `ws` launch shows the running window over D-Bus.
 6. GRUB and systemd-boot GPU profiles with initramfs-tools and dracut.
 7. One-command install.
 
