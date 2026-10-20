@@ -155,7 +155,7 @@ pub(super) fn start(sender: Sender<Command>) -> Option<TrayHandle> {
 fn decode_icon(bytes: &[u8]) -> anyhow::Result<ksni::Icon> {
     let image = tauri::image::Image::from_bytes(bytes)?;
     let mut data = image.rgba().to_vec();
-    for pixel in data.chunks_exact_mut(4) {
+    for pixel in data.as_chunks_mut::<4>().0 {
         pixel.rotate_right(1);
     }
     Ok(ksni::Icon {
@@ -187,13 +187,13 @@ mod tests {
         for icon in icons {
             assert_eq!(icon.width, icon.height);
             assert_eq!(icon.data.len(), (icon.width * icon.height * 4) as usize);
-            assert!(icon.data.chunks_exact(4).any(|p| p[0] > 0));
+            assert!(icon.data.as_chunks::<4>().0.iter().any(|p| p[0] > 0));
         }
         let bytes = include_bytes!("../../icons/hicolor/22x22/apps/window-side.png");
         let source = tauri::image::Image::from_bytes(bytes)?;
         let decoded = decode_icon(bytes)?;
-        for (rgba, argb) in source.rgba().chunks_exact(4).zip(decoded.data.chunks_exact(4)) {
-            assert_eq!(argb, [rgba[3], rgba[0], rgba[1], rgba[2]]);
+        for (rgba, argb) in source.rgba().as_chunks::<4>().0.iter().zip(decoded.data.as_chunks::<4>().0) {
+            assert_eq!(*argb, [rgba[3], rgba[0], rgba[1], rgba[2]]);
         }
         assert!(decode_icon(b"invalid PNG").is_err());
         Ok(())
