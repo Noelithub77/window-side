@@ -41,7 +41,7 @@ export function ChoiceCard({ name, selected, disabled = false, onSelect, childre
       <span
         aria-hidden
         className={cn(
-          "absolute top-5 right-5 grid size-5 place-items-center rounded-full ring-1 transition-colors",
+          "absolute top-5 right-5 z-10 grid size-5 place-items-center rounded-full ring-1 transition-colors",
           selected ? "bg-primary ring-primary" : "ring-foreground/20",
         )}
       >

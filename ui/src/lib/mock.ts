@@ -146,6 +146,21 @@ const plan: Plan = {
   domainXml: "<domain type=\"kvm\">\n  <name>window-side</name>\n  <memory unit=\"MiB\">16384</memory>\n  <vcpu placement=\"static\">10</vcpu>\n  <os firmware=\"efi\">\n    <type arch=\"x86_64\" machine=\"q35\">hvm</type>\n  </os>\n</domain>\n",
 }
 
+/** Walks the guest through drivers and sign-in so the preview shows each stage. */
+function playFirstBoot() {
+  const steps: Status["firstBoot"][] = [
+    { stage: "drivers", storageReady: true, networkReady: false },
+    { stage: "drivers", storageReady: true, networkReady: true },
+    { stage: "signIn", storageReady: true, networkReady: true },
+    { stage: "ready", storageReady: true, networkReady: true },
+  ]
+  steps.forEach((firstBoot, index) => {
+    window.setTimeout(() => {
+      if (status.firstBoot) update({ firstBoot })
+    }, 2500 * (index + 1))
+  })
+}
+
 async function run(action: Action): Promise<void> {
   await wait(900)
   switch (action.kind) {
@@ -164,6 +179,7 @@ async function run(action: Action): Promise<void> {
       return
     case "firstBootStart":
       update({ state: "running", firstBoot: { stage: "drivers", storageReady: false, networkReady: false } })
+      playFirstBoot()
       return
     case "firstBootFinish":
       update({ firstBoot: null })

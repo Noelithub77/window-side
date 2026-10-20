@@ -108,7 +108,7 @@ export function LiveHero({ status }: { status: Status }) {
           <StateChip state={status.state} />
         </div>
         <motion.div className="flex items-center gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
-          <Stat icon={Clock} value={uptime(status.uptimeSeconds)} label="Uptime" />
+          {status.uptimeSeconds !== null && <Stat icon={Clock} value={uptime(status.uptimeSeconds)} label="Uptime" />}
           {status.processes !== null && <Stat icon={Activity} value={String(status.processes)} label="Processes" />}
         </motion.div>
       </div>

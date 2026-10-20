@@ -14,6 +14,8 @@ const PAGES: { page: Page; label: string }[] = [
 function Nav() {
   const page = useApp((state) => state.page)
   const go = useApp((state) => state.go)
+  // Settings holds something waiting on the user: updates or a missing sign-in.
+  const waiting = useApp((state) => (state.status?.pendingUpdates ?? 0) > 0 || state.status?.credentialSaved === false)
   return (
     <nav className="glass flex gap-1 rounded-full p-1 ring-1 ring-border" aria-label="Pages">
       {PAGES.map((item) => (
@@ -37,6 +39,14 @@ function Nav() {
             />
           )}
           <span className="relative">{item.label}</span>
+          {item.page === "settings" && waiting && page !== "settings" && (
+            <motion.span
+              aria-label="Needs attention"
+              className="absolute top-1 right-1.5 size-1.5 rounded-full bg-peach shadow-[0_0_8px_var(--peach)]"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+            />
+          )}
         </button>
       ))}
     </nav>

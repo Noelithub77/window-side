@@ -3,25 +3,13 @@ import NumberFlow from "@number-flow/react"
 import { Cpu, MemoryStick, Terminal } from "lucide-react"
 import { motion } from "motion/react"
 import { IconTile } from "@/components/app/IconTile"
+import { Panel } from "@/components/app/Panel"
 import { WindowsMark } from "@/components/app/WindowsMark"
 import { Slider } from "@/components/ui/slider"
 import type { Choices, Host } from "@/bindings"
 import { cn } from "@/lib/utils"
 
 type Props = { host: Host; choices: Choices; change: (next: Partial<Choices>) => void }
-
-function Panel({ children, delay }: { children: React.ReactNode; delay: number }) {
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, type: "spring", stiffness: 200, damping: 24 }}
-      className="glass sheen flex flex-col gap-6 rounded-3xl p-6 ring-1 ring-border"
-    >
-      {children}
-    </motion.section>
-  )
-}
 
 /** Host memory as one bar: Windows' share on the left, what Linux keeps on the right. */
 function MemorySplit({ host, choices, change }: Props) {
