@@ -5,6 +5,11 @@
       "name": "Dev",
       "command": "./ops dev",
       "icon": "play"
+    },
+    {
+      "name": "Local deploy",
+      "command": "./ops release:build && ./install.sh --binary target/release/ws --no-plugin",
+      "icon": "build"
     }
   ]
 }
