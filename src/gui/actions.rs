@@ -1,6 +1,6 @@
 //! Window-side actions: CLI commands off the UI thread, confirmations and settings writes.
 use super::{Armed, WindowSide, fixture, model::{History, Metrics}, theme::Appearance};
-use crate::{cli, config::Config, guest::sign_in};
+use crate::{agents::{self, Agent}, cli, config::Config, guest::sign_in};
 use anyhow::{Context as _, Result};
 use gpui_kit::*;
 use std::process::Command;
@@ -87,6 +87,35 @@ impl WindowSide {
             }
             Err(error) => self.error = Some(format!("{error:#}")),
         }
+        cx.notify();
+    }
+
+    pub(super) fn open_agent(&mut self, agent: Agent, cx: &mut Context<Self>) {
+        if self.fixture {
+            return;
+        }
+        let task = cx.background_spawn(async move { agents::launch(agent) });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.error = result.err().map(|error| format!("{error:#}"));
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn copy_prompt(&mut self, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(agents::SETUP_PROMPT.to_owned()));
+        self.copied = true;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            let _ = this.update(cx, |this, cx| {
+                this.copied = false;
+                cx.notify();
+            });
+        })
+        .detach();
         cx.notify();
     }
 

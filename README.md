@@ -117,6 +117,13 @@ runs. Disk and GPU values change system files, so they stay with
 
 ## Agent access
 
+The welcome screen can hand setup to a local agent. "Set up with an agent"
+lists Claude Code, Codex and OpenCode when installed and opens the chosen one
+in a terminal (`xdg-terminal-exec`, then the desktop's own terminal) with
+[`assets/agent-setup.md`](assets/agent-setup.md) as its first prompt. "Copy
+prompt" puts the same text on the clipboard for an agent elsewhere. The prompt
+keeps the agent read-only until you approve `ws setup apply`.
+
 ```sh
 ws --help
 ws status

@@ -14,7 +14,7 @@ mod welcome;
 mod widgets;
 mod wizard;
 
-use crate::{config::Config, setup};
+use crate::{agents::{self, Agent}, config::Config, setup};
 use gpui_kit::component::{
     ActiveTheme, Theme, TitleBar,
     input::InputState,
@@ -63,6 +63,8 @@ struct WindowSide {
     armed: Option<Armed>,
     credential: Option<bool>,
     password: Entity<InputState>,
+    agents: Vec<Agent>,
+    copied: bool,
     setup_open: bool,
     show_files: bool,
     step: usize,
@@ -106,6 +108,8 @@ impl WindowSide {
             armed: None,
             credential: None,
             password: cx.new(|cx| InputState::new(window, cx).masked(true).placeholder("Windows password or PIN")),
+            agents: if fixture { vec![Agent::Claude, Agent::Codex] } else { agents::detect() },
+            copied: false,
             setup_open: true,
             show_files: false,
             step: 0,

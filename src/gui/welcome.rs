@@ -4,7 +4,12 @@ use super::{
     widgets::{aurora, chip, pill_button, reveal},
 };
 use gpui_kit::assets::IconName;
-use gpui_kit::component::{ActiveTheme, Disableable, Icon, Sizable, button::ButtonVariants, spinner::Spinner};
+use gpui_kit::component::{
+    ActiveTheme, Disableable, Icon, Sizable,
+    button::ButtonVariants,
+    menu::{DropdownMenu, PopupMenuItem},
+    spinner::Spinner,
+};
 use gpui_kit::*;
 
 impl WindowSide {
@@ -40,6 +45,48 @@ impl WindowSide {
         } else {
             chip(Some(IconName::HardDriveDownload), format!("{missing} package{} to install", if missing == 1 { "" } else { "s" }), theme.warning)
         })
+    }
+
+    /// Hands setup to a local agent, or copies the prompt for one elsewhere.
+    fn agent_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.copied {
+            return pill_button("agent-setup")
+                .ghost()
+                .icon(Icon::new(IconName::Check))
+                .label("Prompt copied")
+                .into_any_element();
+        }
+        if self.agents.is_empty() {
+            return pill_button("agent-setup")
+                .ghost()
+                .icon(Icon::new(IconName::Copy))
+                .label("Copy agent prompt")
+                .on_click(cx.listener(|this, _, _, cx| this.copy_prompt(cx)))
+                .into_any_element();
+        }
+        let weak = cx.entity().downgrade();
+        let agents = self.agents.clone();
+        pill_button("agent-setup")
+            .ghost()
+            .icon(Icon::new(IconName::Bot))
+            .label("Set up with an agent")
+            .dropdown_menu(move |mut menu, _, _| {
+                for agent in agents.iter().copied() {
+                    let weak = weak.clone();
+                    menu = menu.item(PopupMenuItem::new(agent.name()).icon(IconName::SquareTerminal).on_click(
+                        move |_, _, cx| {
+                            let _ = weak.update(cx, |this, cx| this.open_agent(agent, cx));
+                        },
+                    ));
+                }
+                let weak = weak.clone();
+                menu.separator().item(PopupMenuItem::new("Copy prompt").icon(IconName::Copy).on_click(
+                    move |_, _, cx| {
+                        let _ = weak.update(cx, |this, cx| this.copy_prompt(cx));
+                    },
+                ))
+            })
+            .into_any_element()
     }
 
     pub(super) fn welcome_view(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -80,7 +127,9 @@ impl WindowSide {
                     .icon(Icon::new(IconName::ArrowRight))
                     .disabled(self.inventory.is_none())
                     .on_click(cx.listener(|this, _, window, cx| this.next(window, cx))),
-            );
+            )
+            .child(self.agent_button(cx))
+            .child(self.error_view());
         div()
             .relative()
             .flex()

@@ -33,6 +33,13 @@ key() { omabox keys -b "$box" --window class:window-side "$@"; }
 click() { omabox click -b "$box" --window class:window-side "$@" >/dev/null; }
 start setup
 shot welcome 'right beside Linux'
+click 628 670
+shot agent-menu 'Copy prompt'
+rg -qi 'Claude Code' "$output/agent-menu.txt"
+click 610 770
+shot agent-copied 'right beside Linux'
+magick "$output/agent-copied.png" -crop 600x120+330+610 "$output/agent-copied-button.png"
+tesseract "$output/agent-copied-button.png" stdout 2>/dev/null | rg -qi 'Prompt cop'
 key alt+Right
 shot windows 'Choose Windows'
 key alt+Right
@@ -75,5 +82,5 @@ shot first-boot-ready 'Restarting closes'
 key Tab space
 shot first-boot-complete '7[.]4[[:space:]]*GiB'
 jq -n --arg artifacts "$output" '{environment:"isolated-omabox", success:true,
-  checked:["welcome then setup steps by keyboard","back navigation","card selection","memory stepper change in review","review before apply","Windows status pixels","ink surface","overview and settings navigation","first boot keyboard start and driver instructions","first boot restart returns to status"],
+  checked:["agent menu and prompt copy","welcome then setup steps by keyboard","back navigation","card selection","memory stepper change in review","review before apply","Windows status pixels","ink surface","overview and settings navigation","first boot keyboard start and driver instructions","first boot restart returns to status"],
   hostSetupApplied:false, guestActionsRun:false, artifacts:$artifacts}' | tee "$output/result.json"

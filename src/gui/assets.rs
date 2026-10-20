@@ -8,6 +8,9 @@ icon_assets!(
     ExtraIcons,
     [
         Activity,
+        Bot,
+        Copy,
+        SquareTerminal,
         ArrowLeft,
         ArrowRight,
         Check,

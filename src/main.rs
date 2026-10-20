@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod agents;
 mod cli;
 mod config;
 mod detect;
