@@ -1,4 +1,4 @@
-// GPU passthrough: Windows draws on the real card, and Looking Glass copies each frame into a Linux window.
+// GPU passthrough: Windows owns the whole card, and Looking Glass copies each frame into a Linux window.
 import { gsap } from "gsap";
 import { appWindow, box, chip, laptop, panes } from "../icons.ts";
 import { drawOn, ink, type Point, Sketch } from "../sketch.ts";
@@ -22,7 +22,7 @@ export const build: Build = (svg, narrow) => {
     appWindow(s, vx, vy, L.vmW, L.vmH, "windows vm", { stroke: ink.mint });
     panes(s, vx, vy + 12, 60);
     chip(s, gx, gy, 64, "gpu", ink.peach);
-    s.text(gx + (narrow ? 62 : 0), gy + (narrow ? 6 : 72), "your real card", { size: L.text - 3, color: ink.peach, anchor: narrow ? "start" : "middle" });
+    s.text(gx + (narrow ? 62 : 0), gy + (narrow ? 6 : 72), "windows owns it", { size: L.text - 3, color: ink.peach, anchor: narrow ? "start" : "middle" });
   });
   const render = s.arrow([[gx, gy - 44], [vx, vy + L.vmH / 2 + 8]], { stroke: ink.peach, width: 1.8 });
 

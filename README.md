@@ -23,7 +23,7 @@ The installer verifies the release checksum, installs the app and any missing VM
 ## How it works
 
 - **One calm window.** Start, open and stop Windows from the app or the tray, with live CPU, memory, GPU and network.
-- **Your real GPU.** Pass your graphics card to Windows for near-native speed, shown in a Linux window through [Looking Glass](https://looking-glass.io/). A normal boot gives the card back to Linux.
+- **Your whole GPU.** Windows owns the whole graphics card, so games run at full frame rate, shown in a Linux window through [Looking Glass](https://looking-glass.io/). A normal boot gives the card back to Linux.
 - **Signed in for you.** Your Windows password stays in the Linux keyring and is typed in when Windows starts.
 - **Test Windows apps from Linux.** Key-only SSH, PowerShell, file copies, metrics and updates, all as JSON from `ws`.
 - **Agent skills.** Bundled skills teach Claude Code, Codex and OpenCode to run, test on and set up Windows.
