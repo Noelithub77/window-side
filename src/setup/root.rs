@@ -107,6 +107,10 @@ pub fn apply(plan_path: &Path) -> Result<()> {
     let units = plan.distro.map_or(&["libvirtd.service"][..], Family::libvirt_units);
     text("systemctl", &[&["enable", "--now"][..], units].concat()).context("Could not start libvirt")?;
     text("systemctl", &["daemon-reload"])?;
+    if plan.distro.is_some() {
+        // Started now so that its stop step runs at the next shutdown.
+        text("systemctl", &["enable", "--now", "libvirt-guests.service"]).context("Could not enable clean Windows shutdown")?;
+    }
     if let Some(disk) = &plan.virtual_disk {
         let _ = output("systemctl", &["stop", "window-side-disk.service"]);
         build_virtual_disk(disk)?;

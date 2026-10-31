@@ -8,6 +8,10 @@ mode that exposes only the Windows partition with copied EFI boot files.
 BitLocker can require its recovery key because the VM has a different TPM.
 Use a backed-up installation; same-drive support is not yet runtime verified.
 
+Setup turns on `libvirt-guests` so a Linux shutdown or reboot first shuts
+Windows down cleanly (up to two minutes) instead of cutting its power, which
+leaves the real disk needing chkdsk. It never starts Windows at boot.
+
 First boot uses SATA and an emulated network adapter until the guest drivers
 are installed. The desktop guides the flow; agents can use:
 
@@ -24,7 +28,8 @@ ws setup first-boot finish
 and restarts with VirtIO. Configured passthrough needs the GPU boot profile
 first. Provisioning disables Fast Startup and hibernation in the shared Windows
 install, including native boots. Original power values are recorded in
-`C:\ProgramData\window-side\power-before.json`.
+`C:\ProgramData\window-side\power-before.json`. It also restarts the guest
+agent if a slow boot times out its start, but only inside the VM.
 
 If the transition fails, stop Windows and run `ws setup first-boot recover` to
 restore the saved SATA definition. Recovery verifies disk identity and never

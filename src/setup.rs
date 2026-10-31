@@ -227,6 +227,10 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
             })
         }
     };
+    match system.distro {
+        Some(family) => files.push(files::guests_file(family.libvirt_guests_conf())),
+        None => notes.push("Stop Windows before shutting Linux down; this distro's libvirt-guests is not configured.".into()),
+    }
     let packages = packages(system)?;
     let member_of = text("id", &["-nG", &system.user]).unwrap_or_default();
     let groups = ["libvirt", "kvm"].iter().filter(|group| !member_of.split_whitespace().any(|name| name == **group)).map(|group| (*group).to_owned()).collect();

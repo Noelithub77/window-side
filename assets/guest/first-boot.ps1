@@ -31,6 +31,13 @@ if ($Apply) {
   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
   $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 1) -StartWhenAvailable
   Register-ScheduledTask -TaskName 'Window Side guest services' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+  # A slow boot can time out the agent's start, and Windows never retries it.
+  & sc.exe failure QEMU-GA reset= 86400 actions= restart/5000/restart/15000/restart/60000 | Out-Null
+  $agentCheck = "if ((Get-CimInstance Win32_ComputerSystem).Manufacturer -eq 'QEMU' -and (Get-Service QEMU-GA).Status -eq 'Stopped') { Start-Service QEMU-GA }"
+  $agentAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -Command `"$agentCheck`""
+  $agentTrigger = New-ScheduledTaskTrigger -AtStartup
+  $agentTrigger.Delay = 'PT5M'
+  Register-ScheduledTask -TaskName 'Window Side guest agent' -Action $agentAction -Trigger $agentTrigger -Principal $principal -Settings $settings -Force | Out-Null
   if (Get-Service LGIddHelper -ErrorAction SilentlyContinue) { Set-Service LGIddHelper -StartupType Manual }
   & 'C:\ProgramData\window-side\display-startup.ps1'
 }

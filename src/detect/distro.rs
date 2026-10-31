@@ -108,6 +108,15 @@ impl Family {
             Self::Fedora => &["virtqemud.socket", "virtnetworkd.socket", "virtstoraged.socket", "virtnodedevd.socket", "virtsecretd.socket"],
         }
     }
+
+    /// libvirt-guests sources this file over its own defaults.
+    pub fn libvirt_guests_conf(self) -> &'static str {
+        match self {
+            Self::Arch => "/etc/conf.d/libvirt-guests",
+            Self::Debian => "/etc/default/libvirt-guests",
+            Self::Fedora => "/etc/sysconfig/libvirt-guests",
+        }
+    }
 }
 
 pub fn commands() -> impl Iterator<Item = &'static str> {
