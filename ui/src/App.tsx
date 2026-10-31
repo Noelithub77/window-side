@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { AnimatePresence, MotionConfig, motion, useIsPresent } from "motion/react"
+import { MotionConfig, motion } from "motion/react"
 import { Backdrop, type Mood } from "@/components/app/Backdrop"
 import { TitleBar } from "@/components/app/TitleBar"
 import { WindowsMark } from "@/components/app/WindowsMark"
@@ -41,18 +41,16 @@ const PAGES: Record<Exclude<View, "loading">, () => React.JSX.Element | null> = 
   settings: Settings,
 }
 
+// Slide only: fading this wrapper (or crossfading two pages) isolates the glass panels'
+// backdrop blur until the fade ends, so every panel visibly snaps when it does.
 function PageView({ view }: { view: View }) {
-  const present = useIsPresent()
   const Page = view === "loading" ? null : PAGES[view]
   return (
     <motion.div
       className="absolute inset-0 flex min-h-0 flex-col"
-      inert={!present}
-      aria-hidden={!present}
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: present ? 0.18 : 0.12, ease: "easeOut" }}
+      initial={{ y: 6 }}
+      animate={{ y: 0 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
     >
       {Page ? <Page /> : (
         <div className="grid flex-1 place-items-center">
@@ -80,9 +78,7 @@ export function App() {
         <div className="flex h-full flex-col">
           <TitleBar navigable={view === "overview" || view === "settings"} />
           <main className="relative flex min-h-0 flex-1 flex-col">
-            <AnimatePresence>
-              <PageView key={view} view={view} />
-            </AnimatePresence>
+            <PageView key={view} view={view} />
           </main>
         </div>
         <Toaster position="bottom-center" />

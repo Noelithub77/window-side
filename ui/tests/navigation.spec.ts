@@ -73,3 +73,35 @@ test("rapid tab changes leave only the last requested page interactive", async (
   await expect(page.getByRole("button", { name: "Open", exact: true })).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath("settings.png") })
 })
+
+test("tab changes keep glass panels blurring the backdrop throughout", async ({ page }) => {
+  await page.goto("/?fixture=status")
+  await expect(page.getByRole("heading", { name: "Windows", exact: true })).toBeVisible()
+  await page.waitForTimeout(800)
+  const samples = await page.evaluate(() => {
+    const button = [...document.querySelectorAll<HTMLButtonElement>("nav button")].find((item) => item.textContent.trim() === "Settings")
+    if (!button) throw new Error("Missing navigation: Settings")
+    button.click()
+    const started = performance.now()
+    const found: { pages: number; isolated: number }[] = []
+    return new Promise<typeof found>((resolve) => {
+      function sample() {
+        // An ancestor below full opacity isolates backdrop-filter from the aurora behind it.
+        // Glass nested in glass already blurs only its parent panel, so the walk stops there.
+        const isolated = [...document.querySelectorAll("main .glass")].filter((panel) => {
+          for (let element = panel.parentElement; element; element = element.parentElement) {
+            if (element.classList.contains("glass")) return false
+            if (Number(getComputedStyle(element).opacity) < 1) return true
+          }
+          return false
+        }).length
+        found.push({ pages: document.querySelectorAll("main > div").length, isolated })
+        if (performance.now() - started < 500) requestAnimationFrame(sample)
+        else resolve(found)
+      }
+      sample()
+    })
+  })
+  expect(samples.length).toBeGreaterThan(5)
+  expect(samples.filter((sample) => sample.pages !== 1 || sample.isolated > 0)).toEqual([])
+})
