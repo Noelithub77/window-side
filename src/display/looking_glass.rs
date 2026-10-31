@@ -26,6 +26,8 @@ const CLIENT_OPTIONS: &[&str] = &[
     "win:softOverlay=yes",
     "win:uiFont=DejaVu Sans",
     "win:uiSize=16",
+    // LGMP carries video and input; the domain exposes no SPICE port, so the fallback only retries.
+    "spice:enable=no",
 ];
 
 pub fn open(config: &Config, profile: Profile) -> Result<()> {
