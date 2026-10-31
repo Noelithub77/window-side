@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { useShallow } from "zustand/react/shallow"
-import NumberFlow from "@number-flow/react"
-import { CircleCheck, Cpu, Download, Gpu, HardDrive, type LucideIcon, MemoryStick, MonitorPlay, MonitorSmartphone, RefreshCw, SlidersHorizontal } from "lucide-react"
+import { Cpu, Gpu, HardDrive, type LucideIcon, MemoryStick, MonitorPlay, MonitorSmartphone, SlidersHorizontal } from "lucide-react"
 import { IconTile } from "@/components/app/IconTile"
 import { Panel } from "@/components/app/Panel"
 import { WindowsMark } from "@/components/app/WindowsMark"
@@ -97,42 +96,9 @@ function Display({ running, gpu, delay }: { running: boolean; gpu: boolean; dela
   )
 }
 
-function Updates({ running, pending, delay }: { running: boolean; pending: number | null; delay: number }) {
-  const run = useApp((state) => state.run)
-  const busy = useApp((state) => state.busy)
-  const count = pending ?? 0
-  return (
-    <Panel title="Windows Update" icon={Download} color="var(--peach)" delay={delay}>
-      <div className="flex items-center gap-4">
-        {count > 0 ? (
-          <div className="flex items-baseline gap-2 font-heading">
-            <NumberFlow value={count} className="text-4xl font-semibold text-peach tabular" />
-            <Download className="size-4 text-muted-foreground" aria-label="waiting" />
-          </div>
-        ) : (
-          <CircleCheck className={pending === 0 ? "size-7 text-mint" : "size-7 text-muted-foreground/40"} aria-label={pending === 0 ? "Up to date" : "Not checked"} />
-        )}
-        <div className="flex-1" />
-        {count > 0 ? (
-          <Button className="rounded-full" disabled={!running || busy !== null} onClick={() => void run("Installing updates", { kind: "updatesInstall" })}>
-            <Download />
-            Install
-          </Button>
-        ) : (
-          <Button variant="outline" className="rounded-full" disabled={!running || busy !== null} onClick={() => void run("Checking updates", { kind: "updatesCheck" })}>
-            <RefreshCw className={busy === "Checking updates" ? "animate-spin" : undefined} />
-            Check
-          </Button>
-        )}
-      </div>
-    </Panel>
-  )
-}
-
 export function Settings() {
   const vm = useApp(useShallow((state) => state.status?.vm ?? null))
   const running = useApp((state) => state.status?.state === "running")
-  const pending = useApp((state) => state.status?.pendingUpdates ?? null)
   const credentialSaved = useApp((state) => state.status?.credentialSaved ?? null)
   const shell = useApp((state) => state.shell)
   return (
@@ -141,7 +107,6 @@ export function Settings() {
         <div className="flex flex-col gap-4">
           {vm && <Machine vm={vm} />}
           <Display running={running} gpu={Boolean(vm?.gpu)} delay={0.03} />
-          <Updates running={running} pending={pending} delay={0.06} />
         </div>
         <div className="flex flex-col gap-4">
           {credentialSaved !== null && <SignIn saved={credentialSaved} delay={0.02} />}

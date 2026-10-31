@@ -14,8 +14,8 @@ const PAGES: { page: Page; label: string }[] = [
 function Nav() {
   const page = useApp((state) => state.page)
   const go = useApp((state) => state.go)
-  // Settings holds something waiting on the user: updates or a missing sign-in.
-  const waiting = useApp((state) => (state.status?.pendingUpdates ?? 0) > 0 || state.status?.credentialSaved === false)
+  // Settings holds something waiting on the user: a missing sign-in.
+  const waiting = useApp((state) => state.status?.credentialSaved === false)
   return (
     <nav className="glass flex gap-1 rounded-full p-1 ring-1 ring-border" aria-label="Pages">
       {PAGES.map((item) => (

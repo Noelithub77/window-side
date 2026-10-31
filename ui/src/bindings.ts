@@ -22,7 +22,7 @@ export const commands = {
 };
 
 /* Types */
-export type Action = { kind: "launch" } | { kind: "console" } | { kind: "stop" } | { kind: "forceStop" } | { kind: "reboot"; profile: BootProfile } | { kind: "resolution"; width: number; height: number } | { kind: "lookingGlassSetup" } | { kind: "updatesCheck" } | { kind: "updatesInstall" } | { kind: "signIn" } | { kind: "installPlugin" } | { kind: "firstBootStart" } | { kind: "firstBootFinish" };
+export type Action = { kind: "launch" } | { kind: "console" } | { kind: "stop" } | { kind: "forceStop" } | { kind: "reboot"; profile: BootProfile } | { kind: "resolution"; width: number; height: number } | { kind: "lookingGlassSetup" } | { kind: "signIn" } | { kind: "installPlugin" } | { kind: "firstBootStart" } | { kind: "firstBootFinish" };
 
 export type Agent = {
 	id: AgentId,
@@ -162,7 +162,6 @@ export type Status = {
 	state: VmState,
 	bootProfile: BootProfile | null,
 	storageError: string | null,
-	pendingUpdates: number | null,
 	uptimeSeconds: number | null,
 	processes: number | null,
 	credentialSaved: boolean | null,

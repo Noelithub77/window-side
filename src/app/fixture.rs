@@ -65,9 +65,6 @@ impl Fixture {
             status.uptime_seconds = Some(if scenario == "status" { 3349. } else { 420. });
             status.processes = Some(if scenario == "status" { 142. } else { 96. });
         }
-        if scenario == "status" {
-            status.pending_updates = Some(2);
-        }
         Ok(Self {
             status,
             appearance: Appearance::Pastel,
@@ -237,7 +234,6 @@ impl Fixture {
                 self.status.processes = None;
             }
             Action::Reboot { profile } => self.status.boot_profile = Some(profile),
-            Action::UpdatesInstall => self.status.pending_updates = None,
             Action::FirstBootStart => {
                 self.started = Some(std::time::Instant::now());
                 self.status.state = VmState::Running;

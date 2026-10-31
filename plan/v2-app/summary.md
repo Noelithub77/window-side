@@ -12,7 +12,7 @@ desktops. The Omarchy panel stays an optional add-on, offered only on Omarchy.
 | Visual style | **[chosen]** Soft, rounded, pastel-on-ink: large radii, gradient washes, SVG illustrations rendered with `img`, short one-shot animations. No infinite animations except spinners. |
 | Graphs | **[chosen]** Smooth filled area waves (GPUI Kit `AreaChart`) for CPU, memory, GPU and network rate, each with its own pastel colour. |
 | Panel parity | **[chosen]** Start, open, shut down, force stop (two-step confirm), boot profile switch with reboot (two-step confirm), errors and storage state live in the window. |
-| Settings | **[chosen]** In-app: VM resources (via setup), sign-in credential, Looking Glass display, resolution, Windows Update, appearance. Omarchy panel and Omarchy colours only when Omarchy is installed. |
+| Settings | **[chosen]** In-app: VM resources (via setup), sign-in credential, Looking Glass display, resolution, appearance. Windows Update stays CLI-only (`ws updates`); the app does not surface it. Omarchy panel and Omarchy colours only when Omarchy is installed. |
 | Tray | **[chosen]** `ksni` (StatusNotifierItem over D-Bus, no GTK). Closing keeps ws in the tray when a tray host exists (KDE, Ubuntu GNOME, Hyprland bars); otherwise closing quits. No autostart. |
 | GPU usage | **[chosen]** Guest metrics read Windows GPU engine counters; the GPU wave shows only when Windows reports them. |
 | Distros | **[chosen]** Ubuntu/Debian, Arch and Fedora families, detected from `/etc/os-release` (`ID`, `ID_LIKE`). Each maps packages, firmware paths and services. |

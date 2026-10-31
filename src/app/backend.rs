@@ -301,8 +301,6 @@ fn action_args(action: Action) -> Vec<String> {
             ];
         }
         Action::LookingGlassSetup => vec!["looking-glass-setup"],
-        Action::UpdatesCheck => vec!["updates", "check"],
-        Action::UpdatesInstall => vec!["updates", "install"],
         Action::SignIn => vec!["sign-in", "run", "--wait", "40"],
         Action::InstallPlugin => vec!["setup", "plugin"],
         Action::FirstBootStart => vec!["setup", "first-boot", "start"],

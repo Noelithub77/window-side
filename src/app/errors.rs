@@ -27,16 +27,10 @@ pub(super) fn action_message(stderr: &[u8], stdout: &[u8]) -> String {
         return message;
     }
     // Some CLI actions report a failure as structured stdout with a nonzero exit.
-    if let Ok(report) = serde_json::from_slice::<serde_json::Value>(stdout) {
-        if report["status"] == "not-signed-in" {
-            return "Windows sign-in did not finish".into();
-        }
-        if report["failed"]
-            .as_array()
-            .is_some_and(|items| !items.is_empty())
-        {
-            return "Windows Update could not install some updates".into();
-        }
+    if let Ok(report) = serde_json::from_slice::<serde_json::Value>(stdout)
+        && report["status"] == "not-signed-in"
+    {
+        return "Windows sign-in did not finish".into();
     }
     "Windows could not complete the action".into()
 }
@@ -107,10 +101,6 @@ mod tests {
         assert_eq!(
             action_message(b"", br#"{"status":"not-signed-in"}"#),
             "Windows sign-in did not finish"
-        );
-        assert_eq!(
-            action_message(b"", br#"{"failed":["update"]}"#),
-            "Windows Update could not install some updates"
         );
         assert_eq!(
             action_message(b"window-side: The keyring did not store the credential", b""),

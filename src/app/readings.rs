@@ -17,12 +17,7 @@ pub struct Reading {
     pub sampled_at: Option<f64>,
     pub uptime_seconds: Option<f64>,
     pub pids: Option<f64>,
-    pub updates: Option<Updates>,
     pub storage: Option<Storage>,
-}
-#[derive(Deserialize)]
-pub struct Updates {
-    pending: Option<u32>,
 }
 #[derive(Deserialize)]
 pub struct Storage {
@@ -88,9 +83,6 @@ pub fn status(reading: Option<&Reading>, credential: Option<bool>) -> Result<Sta
             .map(|s| s.error.clone())
             .filter(|e| !e.is_empty())
             .or_else(|| (!c.disk_link().exists()).then(|| "Windows disk not detected".into())),
-        pending_updates: live
-            .and_then(|r| r.updates.as_ref())
-            .and_then(|u| u.pending),
         uptime_seconds: live.and_then(|r| r.uptime_seconds),
         processes: live.and_then(|r| r.pids),
         credential_saved: credential,
@@ -120,7 +112,6 @@ pub fn empty() -> Status {
         unavailable_reason: Some("Windows is not configured".into()),
         boot_profile: None,
         storage_error: None,
-        pending_updates: None,
         uptime_seconds: None,
         processes: None,
         credential_saved: None,
