@@ -1,0 +1,85 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#pragma once
+
+#include "CComputeEffect.h"
+
+enum class CalPart : uint8_t
+{
+  ALL,
+  MATRIX,
+  LUT,
+};
+
+class CColorTransformEffect : public CComputeEffect
+{
+private:
+  struct Consts
+  {
+    float matrix[3][4];
+    float scalar;
+    UINT  matrixEnabled;
+    UINT  lutEnabled;
+    UINT  inputTransfer;
+    UINT  outputTransfer;
+  } m_consts = {};
+  float m_lut[4096][4] = {};
+  bool  m_uploadPending = false;
+
+  ComPtr<ID3D12Resource> m_constBuffer;
+  ComPtr<ID3D12Resource> m_lutBuffer;
+  DXGI_FORMAT            m_srcFormat = DXGI_FORMAT_UNKNOWN;
+  DXGI_FORMAT            m_dstFormat = DXGI_FORMAT_UNKNOWN;
+  CalPart                m_part;
+  bool                   m_keepSignal;
+
+  PostProcessStatus Set(const ComPtr<ID3D12Device3>& device,
+    const D12FrameFormat& src, D12FrameFormat& dst, bool own);
+  bool Draw(const ComPtr<ID3D12Device3>& device,
+    const ComPtr<ID3D12GraphicsCommandList>& commandList,
+    const ComPtr<ID3D12Resource>& src, ID3D12Resource * dst,
+    RECT dirtyRects[], unsigned * nbDirtyRects);
+
+public:
+  explicit CColorTransformEffect(CalPart part = CalPart::ALL,
+    bool keepSignal = false) :
+    m_part(part), m_keepSignal(keepSignal) {}
+
+  const char * GetName() const override { return "ColorTransform"; }
+
+  bool Init(const ComPtr<ID3D12Device3>& device);
+
+  PostProcessStatus SetFormat(const ComPtr<ID3D12Device3>& device,
+    const D12FrameFormat& src, D12FrameFormat& dst) override;
+  // Configures shader state without allocating the legacy-owned output.
+  PostProcessStatus Cfg(const ComPtr<ID3D12Device3>& device,
+    const D12FrameFormat& src, D12FrameFormat& dst);
+
+  ComPtr<ID3D12Resource> Run(const ComPtr<ID3D12Device3>& device,
+    const ComPtr<ID3D12GraphicsCommandList>& commandList,
+    const ComPtr<ID3D12Resource>& src, RECT dirtyRects[],
+    unsigned * nbDirtyRects) override;
+  // dst must match Cfg's output and be in COMMON; Run restores COMMON.
+  bool Run(const ComPtr<ID3D12Device3>& device,
+    const ComPtr<ID3D12GraphicsCommandList>& commandList,
+    const ComPtr<ID3D12Resource>& src, ID3D12Resource * dst,
+    RECT dirtyRects[], unsigned * nbDirtyRects);
+};

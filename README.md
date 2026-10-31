@@ -45,7 +45,10 @@ v0.1 is a prerelease. Arch with Hyprland and Limine is tested end to end. Ubuntu
 
 ## Thanks
 
-[Looking Glass](https://github.com/gnif/LookingGlass), by Geoffrey McRae and contributors, owns the display path for GPU passthrough. window-side is an independent companion that sets up the VM around it.
+[Looking Glass](https://github.com/gnif/LookingGlass), by Geoffrey McRae and
+contributors, owns the display path for GPU passthrough. Window Side vendors a
+[pinned client fork](third_party/looking-glass/README.window-side.md), installs
+its private viewer and supplies the keyboard and overlay settings.
 
 ## Learn more
 

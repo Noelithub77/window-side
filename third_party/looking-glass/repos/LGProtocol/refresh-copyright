@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+#
+# LGProtocol - Looking Glass Communication Protocol
+# Copyright © 2017-2026 Geoffrey McRae <geoff@hostfission.com>
+# https://github.com/gnif/LGProtocol
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2 of the License, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+# more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc., 59
+# Temple Place, Suite 330, Boston, MA 02111-1307 USA
+
+import argparse
+import datetime
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+CURRENT_YEAR    = datetime.date.today().year
+SOURCE_SUFFIXES = {
+  ".c",
+  ".c++",
+  ".cc",
+  ".cpp",
+  ".cxx",
+  ".h",
+  ".h++",
+  ".hh",
+  ".hpp",
+  ".hxx",
+  ".inl",
+  ".ipp",
+}
+
+BANNER = f"""/**
+ * LGProtocol - Looking Glass Communication Protocol
+ * Copyright © 2017-{CURRENT_YEAR} Geoffrey McRae <geoff@hostfission.com>
+ * https://github.com/gnif/LGProtocol
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */"""
+
+BANNER_BYTES       = BANNER.encode("utf-8")
+COPYRIGHT_LINE     = (
+  f" * Copyright © 2017-{CURRENT_YEAR} "
+  "Geoffrey McRae <geoff@hostfission.com>"
+)
+COPYRIGHT_LINE_RE  = re.compile(
+  r"^ \* Copyright © 2017-\d{4} Geoffrey McRae <geoff@hostfission\.com>$"
+)
+UTF8_BOM           = b"\xef\xbb\xbf"
+
+
+def parse_args():
+  parser = argparse.ArgumentParser(
+    description="Refresh LGProtocol C and C++ copyright banners."
+  )
+  parser.add_argument(
+    "--check",
+    action="store_true",
+    help="report stale or missing banners without modifying files",
+  )
+  return parser.parse_args()
+
+
+def run_git(arguments, directory):
+  try:
+    result = subprocess.run(
+      ["git", "-C", os.fspath(directory), *arguments],
+      check=False,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+    )
+  except OSError as error:
+    raise RuntimeError(f"unable to run git: {error}") from error
+
+  if result.returncode != 0:
+    message = os.fsdecode(result.stderr).strip()
+    raise RuntimeError(message or "git command failed")
+
+  return result.stdout
+
+
+def repository_root():
+  script_directory = Path(__file__).resolve().parent
+  output           = run_git(
+    ["rev-parse", "--show-toplevel"], script_directory
+  )
+  return Path(os.fsdecode(output.rstrip(b"\n")))
+
+
+def source_files(root):
+  output = run_git(
+    [
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+    ],
+    root,
+  )
+
+  relative_paths = {
+    Path(os.fsdecode(raw_path))
+    for raw_path in output.split(b"\0")
+    if raw_path
+  }
+  paths          = []
+
+  for relative_path in sorted(relative_paths, key=os.fspath):
+    if relative_path.suffix.lower() not in SOURCE_SUFFIXES:
+      continue
+
+    path = root / relative_path
+    if path.is_symlink() or not path.is_file():
+      continue
+
+    paths.append(path)
+
+  return paths
+
+
+def comment_offset(data):
+  offset = len(UTF8_BOM) if data.startswith(UTF8_BOM) else 0
+
+  while offset < len(data) and data[offset] in b" \t\r\n":
+    offset += 1
+
+  return offset
+
+
+def insertion_offset(data):
+  return len(UTF8_BOM) if data.startswith(UTF8_BOM) else 0
+
+
+def recognized_banner(comment):
+  try:
+    normalized = comment.replace(b"\r\n", b"\n").decode("utf-8")
+  except UnicodeDecodeError:
+    return False
+
+  lines = normalized.splitlines()
+  if len(lines) != len(BANNER.splitlines()):
+    return False
+
+  if not COPYRIGHT_LINE_RE.fullmatch(lines[2]):
+    return False
+
+  lines[2] = COPYRIGHT_LINE
+  return "\n".join(lines) == BANNER
+
+
+def banner_status(data):
+  start = comment_offset(data)
+
+  if data.startswith(b"/*", start):
+    close = data.find(b"*/", start + 2)
+    if close < 0:
+      return "unfamiliar", None
+
+    end     = close + 2
+    comment = data[start:end]
+    if not recognized_banner(comment):
+      return "unfamiliar", None
+
+    status = "current" if comment == BANNER_BYTES else "stale"
+    return status, (start, end)
+
+  if data.startswith(b"//", start):
+    return "unfamiliar", None
+
+  return "missing", None
+
+
+def refreshed_data(data, status, span):
+  if status == "stale":
+    start, end = span
+    return data[:start] + BANNER_BYTES + data[end:]
+
+  offset    = insertion_offset(data)
+  separator = b"\n\n" if data[offset:] else b"\n"
+  return data[:offset] + BANNER_BYTES + separator + data[offset:]
+
+
+def process_file(path, root, check_only):
+  relative_path = path.relative_to(root)
+
+  try:
+    data = path.read_bytes()
+  except OSError as error:
+    print(f"error: {relative_path}: {error}", file=sys.stderr)
+    return True
+
+  status, span = banner_status(data)
+  if status == "current":
+    return False
+
+  if status == "unfamiliar":
+    print(
+      f"refused: {relative_path}: unfamiliar leading comment",
+      file=sys.stderr,
+    )
+    return True
+
+  if check_only:
+    print(f"{status}: {relative_path}")
+    return True
+
+  try:
+    path.write_bytes(refreshed_data(data, status, span))
+  except OSError as error:
+    print(f"error: {relative_path}: {error}", file=sys.stderr)
+    return True
+
+  action = "refreshed" if status == "stale" else "added"
+  print(f"{action}: {relative_path}")
+  return False
+
+
+def main():
+  arguments = parse_args()
+
+  try:
+    root  = repository_root()
+    paths = source_files(root)
+  except RuntimeError as error:
+    print(f"error: {error}", file=sys.stderr)
+    return 2
+
+  issue_found = False
+  for path in paths:
+    issue_found = process_file(path, root, arguments.check) or issue_found
+
+  return 1 if issue_found else 0
+
+
+if __name__ == "__main__":
+  sys.exit(main())

@@ -40,6 +40,7 @@ ui/tests/                Playwright Chromium interaction tests
 skills/                  agent skills (SKILL.md), bundled into `ws`
 site/                    Landing page (Vite, GSAP, rough.js, WebGL), deployed with cf
 assets/                  guest PowerShell, Omarchy plugin, illustrations, agent prompt
+third_party/looking-glass/ vendored B7-829 client and its bundled dependencies
 scripts/, tests/         GUI, installer, first-boot and guest checks
 packaging/, install.sh   desktop entry, AUR template, one-command installer
 plan/                    design notes (`tauri-app` is current, `landing` for the site)
@@ -57,9 +58,9 @@ Use `./ops --help` first; prefer it over one-off scripts.
 - `./ops gui:smoke --output /new/abs/dir`: native WebKitGTK fixture smoke in OmaBox.
 - `./ops gui:installed --binary FILE --output DIR`: an installed binary in a fresh OmaBox HOME.
 - `./ops guest:check`: read-only checks in a running Windows guest. Never start the VM just for a check without asking.
-- `./ops looking-glass:build|test|install|status`: pinned client customization;
-  see `plan/looking-glass/summary.md`. Install backs up the Linux client and does
-  not restart the viewer, Windows or Linux.
+- `./ops looking-glass:build|test|install|status`: vendored viewer; read
+  `third_party/looking-glass/README.window-side.md` before client edits or upstream
+  updates. The app installer owns its private viewer; no system client is used.
 - `./ops dev`: build and replace this checkout's development app.
 - `./ops site:check`: landing page lint and build. `site:dev` serves it; `site:deploy [--dry-run]` builds and deploys it to window-side.allpyq.in with the `cf` CLI.
 

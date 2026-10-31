@@ -19,6 +19,7 @@ mkdir -p "$root/target"
 exec 9>"$root/target/dev.lock"
 flock 9
 # Use a predictable checkout-local binary even when the shell sets a target directory.
+bash "$root/scripts/looking-glass.sh" build
 pnpm -C ui build
 cargo build --locked --jobs 2 --bin ws --target-dir "$root/target"
 binary="$root/target/debug/ws"

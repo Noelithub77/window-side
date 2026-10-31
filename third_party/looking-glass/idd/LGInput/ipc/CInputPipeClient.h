@@ -1,0 +1,63 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#pragma once
+
+#include "CPipeEndpoint.h"
+#include "CSRWLock.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+class CInputPipeClient : private IPipeEndpointHandler
+{
+public:
+  ~CInputPipeClient() { Stop(); }
+
+  bool Start();
+  void Stop();
+  void UpdateKeyboardLEDs(uint8_t leds);
+
+private:
+  static constexpr ULONGLONG STATISTICS_INTERVAL_MS = 5000;
+
+  void OnPipeConnected() override;
+  void OnPipeDisconnected() override;
+  bool OnPipeMessage(const void * message, size_t size) override;
+  bool HandleMouseRelative(const void * payload, size_t size);
+  bool HandleMouseAbsolute(const void * payload, size_t size);
+  bool HandleKeyboard(const void * payload, size_t size);
+  bool SubmitReport(const void * report, size_t size);
+  bool SendKeyboardLEDsLocked();
+  void LogStatistics(bool force);
+
+  CPipeEndpoint m_endpoint;
+  CSRWLock      m_feedbackLock;
+  bool          m_feedbackReady       = false;
+  bool          m_keyboardLEDsValid   = false;
+  uint64_t      m_feedbackSequence    = 0;
+  uint8_t       m_keyboardLEDs        = 0;
+  uint64_t      m_lastSequence        = 0;
+  uint64_t      m_statReceived        = 0;
+  uint64_t      m_statMalformed       = 0;
+  uint64_t      m_statSequenceResets  = 0;
+  uint64_t      m_statSubmitFailed    = 0;
+  ULONGLONG     m_lastStatistics      = 0;
+};

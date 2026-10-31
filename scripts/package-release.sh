@@ -14,6 +14,8 @@ done
 [[ "$(uname -m)" == x86_64 ]] || { echo 'Only Linux x86_64 release artifacts are supported' >&2; exit 1; }
 binary="$root/target/release/ws"
 [[ -x "$binary" ]] || { echo 'Build the release binary first' >&2; exit 1; }
+viewer="$root/target/libexec/window-side/window-side-viewer"
+[[ -x "$viewer" ]] || { echo 'Build the vendored viewer with ./ops looking-glass:build first' >&2; exit 1; }
 version=$("$binary" --version); version=${version#ws }
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][[:alnum:].-]+)?$ ]] || exit 1
 revision=$(git -C "$root" rev-parse HEAD)
@@ -29,6 +31,9 @@ stage=$(mktemp -d)
 trap 'rm -rf -- "$stage"' EXIT
 mkdir -p "$stage/$name/packaging" "$stage/$name/scripts"
 install -m 755 "$binary" "$stage/$name/ws"
+mkdir -p "$stage/$name/libexec/window-side" "$stage/$name/third_party"
+install -m 755 "$viewer" "$stage/$name/libexec/window-side/window-side-viewer"
+cp -R "$root/third_party/looking-glass" "$stage/$name/third_party/"
 install -m 755 "$root/install.sh" "$stage/$name/install.sh"
 install -m 755 "$root/scripts/system-deps.sh" "$stage/$name/scripts/system-deps.sh"
 install -m 644 "$root/packaging/window-side.desktop" "$stage/$name/packaging/window-side.desktop"

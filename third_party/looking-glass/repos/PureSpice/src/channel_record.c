@@ -1,0 +1,137 @@
+/**
+ * PureSpice - A pure C implementation of the SPICE client protocol
+ * Copyright © 2017-2025 Geoffrey McRae <geoff@hostfission.com>
+ * https://github.com/gnif/PureSpice
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#include "purespice.h"
+
+#include "ps.h"
+#include "log.h"
+#include "channel.h"
+#include "channel_record.h"
+
+#include "messages.h"
+
+void channelRecord_setClientCaps(uint32_t * caps)
+{
+  if (g_ps.config.record.volume || g_ps.config.record.mute)
+    RECORD_SET_CAPABILITY(caps, SPICE_RECORD_CAP_VOLUME);
+}
+
+static PS_STATUS onMessage_recordStart(PSChannel * channel)
+{
+  if (!channel_validatePayload(
+        channel, sizeof(SpiceMsgRecordStart), "RECORD_START"))
+    return PS_STATUS_ERROR;
+
+  SpiceMsgRecordStart * msg = (SpiceMsgRecordStart *)channel->buffer;
+
+  PSAudioFormat fmt = PS_AUDIO_FMT_INVALID;
+  if (msg->format == SPICE_AUDIO_FMT_S16)
+    fmt = PS_AUDIO_FMT_S16;
+
+  g_ps.config.record.start(msg->channels, msg->frequency, fmt);
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_recordStop(PSChannel * channel)
+{
+  (void)channel;
+
+  g_ps.config.record.stop();
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_recordVolume(PSChannel * channel)
+{
+  if (!channel_validatePayload(
+        channel, sizeof(SpiceMsgAudioVolume), "RECORD_VOLUME"))
+    return PS_STATUS_ERROR;
+
+  SpiceMsgAudioVolume * msg = (SpiceMsgAudioVolume *)channel->buffer;
+  const size_t available = channel->header.size - sizeof(*msg);
+  if (msg->nchannels > available / sizeof(msg->volume[0]))
+  {
+    PS_LOG_ERROR("RECORD: volume channel count exceeds its payload");
+    return PS_STATUS_ERROR;
+  }
+
+  uint16_t volume[UINT8_MAX + 1];
+  memcpy(volume, msg->volume, sizeof(volume[0]) * msg->nchannels);
+
+  g_ps.config.record.volume(msg->nchannels, volume);
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_recordMute(PSChannel * channel)
+{
+  if (!channel_validatePayload(
+        channel, sizeof(SpiceMsgAudioMute), "RECORD_MUTE"))
+    return PS_STATUS_ERROR;
+
+  SpiceMsgAudioMute * msg = (SpiceMsgAudioMute *)channel->buffer;
+
+  g_ps.config.record.mute(msg->mute);
+  return PS_STATUS_OK;
+}
+
+PSHandlerFn channelRecord_onMessage(PSChannel * channel)
+{
+  channel->initDone = true;
+  switch(channel->header.type)
+  {
+    case SPICE_MSG_RECORD_START:
+      return onMessage_recordStart;
+
+    case SPICE_MSG_RECORD_STOP:
+      return onMessage_recordStop;
+
+    case SPICE_MSG_RECORD_VOLUME:
+      if (!g_ps.config.record.volume)
+        return PS_HANDLER_DISCARD;
+      return onMessage_recordVolume;
+
+    case SPICE_MSG_RECORD_MUTE:
+      if (!g_ps.config.record.mute)
+        return PS_HANDLER_DISCARD;
+      return onMessage_recordMute;
+  }
+
+  return PS_HANDLER_ERROR;
+}
+
+bool purespice_writeAudio(void * data, size_t size, uint32_t time)
+{
+  PSChannel * channel = &g_ps.channels[PS_CHANNEL_RECORD];
+  const SpiceMsgcRecordPacket packet =
+  {
+    .time = time
+  };
+
+  /* Capture delivery must never hold backend shutdown behind a busy channel
+   * or full SPICE socket. Try the lifecycle lock and use one nonblocking
+   * sendmsg; otherwise drop the packet and let the bounded queue recover. */
+  if (!SPICE_TRY_LOCK(channel->lock))
+    return false;
+
+  const bool result = channel_sendMessagePartsNL(
+      channel, SPICE_MSGC_RECORD_DATA,
+      &packet, sizeof(packet), data, size, true);
+  SPICE_UNLOCK(channel->lock);
+  return result;
+}

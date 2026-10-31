@@ -1,0 +1,488 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#include "common/rects.h"
+#include "common/util.h"
+#include "common/cpuinfo.h"
+
+#include <math.h>
+#include <stdlib.h>
+#include <immintrin.h>
+
+struct Corner
+{
+  int x;
+  int y;
+  int delta;
+};
+
+struct Edge
+{
+  int x;
+  int delta;
+};
+
+void rectScaleOutward(struct Rect * rect, double scale)
+{
+  const int left   = (int)floor(rect->x * scale);
+  const int top    = (int)floor(rect->y * scale);
+  const int right  = (int)ceil(((double)rect->x + rect->w) * scale);
+  const int bottom = (int)ceil(((double)rect->y + rect->h) * scale);
+
+  rect->x = left;
+  rect->y = top;
+  rect->w = right  - left;
+  rect->h = bottom - top;
+}
+
+inline static bool rectIntersects(const KVMFRFrameDamageRect * r1,
+    const KVMFRFrameDamageRect * r2)
+{
+  return !(
+    r1->x > r2->x + r2->width  ||
+    r2->x > r1->x + r1->width  ||
+    r1->y > r2->y + r2->height ||
+    r2->y > r1->y + r1->height);
+}
+
+inline static bool rectContains(const KVMFRFrameDamageRect * r1,
+    const KVMFRFrameDamageRect * r2)
+{
+  return !(
+    r2->x              < r1->x              ||
+    r2->x + r2->width  > r1->x + r1->width  ||
+    r2->y              < r1->y              ||
+    r2->y + r2->height > r1->y + r1->height);
+}
+
+inline static int removeRects(KVMFRFrameDamageRect * rects, int count,
+    bool removed[])
+{
+  int o = 0;
+  for (int i = 0; i < count; ++i)
+  {
+    if (removed[i] || i == o++)
+      continue;
+
+    rects[o-1] = rects[i];
+  }
+
+  return o;
+}
+
+static int cornerCompare(const void * a_, const void * b_)
+{
+  const struct Corner * a = a_;
+  const struct Corner * b = b_;
+
+  if (a->y < b->y) return -1;
+  if (a->y > b->y) return +1;
+  if (a->x < b->x) return -1;
+  if (a->x > b->x) return +1;
+  return 0;
+}
+
+static bool rectsBufferCopy(const KVMFRFrameDamageRect * rects,
+  int count, int bpp,
+  uint8_t * dst, int dstStride, int height,
+  const uint8_t * src, int srcStride, void * opaque,
+  bool (*rowCopyStart)(int y, void * opaque),
+  void (*rowCopyFinish)(int y, void * opaque))
+{
+  if (!rects || count <= 0 || bpp <= 0 || !dst || !src ||
+      count > LG_MAX_FRAME_DAMAGE_RECTS ||
+      dstStride <= 0 || srcStride <= 0 || height <= 0 ||
+      (size_t)height > SIZE_MAX / (size_t)dstStride ||
+      (size_t)height > SIZE_MAX / (size_t)srcStride ||
+      (size_t)height * (size_t)dstStride > UINT_LEAST32_MAX ||
+      (size_t)height * (size_t)srcStride > UINT_LEAST32_MAX)
+    return false;
+
+  for (int i = 0; i < count; ++i)
+  {
+    const KVMFRFrameDamageRect * rect   = rects + i;
+    const uint64_t               right  = (uint64_t)rect->x + rect->width;
+    const uint64_t               bottom = (uint64_t)rect->y + rect->height;
+    if (!rect->width || !rect->height || bottom > (uint32_t)height ||
+        right > (uint32_t)dstStride / (uint32_t)bpp ||
+        right > (uint32_t)srcStride / (uint32_t)bpp)
+      return false;
+  }
+
+  const size_t cornerCount = (size_t)count * 4U;
+  struct Corner corners[cornerCount];
+  struct Edge active_[2][cornerCount];
+  struct Edge change[cornerCount];
+
+  for (int i = 0; i < count; ++i)
+  {
+    const KVMFRFrameDamageRect * rect = rects + i;
+    corners[4 * i + 0] = (struct Corner) {
+      .x = rect->x, .y = rect->y, .delta = 1
+    };
+    corners[4 * i + 1] = (struct Corner) {
+      .x = rect->x + rect->width, .y = rect->y, .delta = -1
+    };
+    corners[4 * i + 2] = (struct Corner) {
+      .x = rect->x, .y = rect->y + rect->height, .delta = -1
+    };
+    corners[4 * i + 3] = (struct Corner) {
+      .x = rect->x + rect->width, .y = rect->y + rect->height, .delta = 1
+    };
+  }
+  qsort(corners, cornerCount, sizeof(struct Corner), cornerCompare);
+
+  int prev_y = 0;
+  int activeRow = 0;
+  size_t actives = 0;
+  bool result = true;
+
+  for (size_t rs = 0;;)
+  {
+    int y = corners[rs].y;
+    size_t re = rs;
+    while (re < cornerCount && corners[re].y == y)
+      ++re;
+
+    size_t changes = 0;
+    for (size_t i = rs; i < re; )
+    {
+      int x = corners[i].x;
+      int delta = 0;
+      while (i < re && corners[i].x == x)
+        delta += corners[i++].delta;
+      change[changes++] = (struct Edge) { .x = x, .delta = delta };
+    }
+
+    if (rowCopyStart && !rowCopyStart(y, opaque))
+    {
+      result = false;
+      break;
+    }
+
+    struct Edge * active = active_[activeRow];
+    int x1 = 0;
+    int in_rect = 0;
+    for (size_t i = 0; i < actives; ++i)
+    {
+      if (!in_rect)
+        x1 = active[i].x;
+      in_rect += active[i].delta;
+      if (!in_rect)
+        rectCopyUnaligned(dst, src, prev_y, y, x1 * bpp, dstStride, srcStride,
+            (active[i].x - x1) * bpp);
+    }
+
+    if (re >= cornerCount || y == height)
+      break;
+
+    if (rowCopyFinish)
+      rowCopyFinish(y, opaque);
+
+    struct Edge * new = active_[activeRow ^ 1];
+    size_t ai = 0;
+    size_t ci = 0;
+    size_t ni = 0;
+
+    while (ai < actives && ci < changes)
+    {
+      if (active[ai].x < change[ci].x)
+        new[ni++] = active[ai++];
+      else if (active[ai].x > change[ci].x)
+        new[ni++] = change[ci++];
+      else
+      {
+        active[ai].delta += change[ci++].delta;
+        if (active[ai].delta != 0)
+          new[ni++] = active[ai];
+        ++ai;
+      }
+    }
+
+    // only one of (actives - ai) and (changes - ci) will be non-zero.
+    memcpy(new + ni, active + ai, (actives - ai) * sizeof(struct Edge));
+    memcpy(new + ni, change + ci, (changes - ci) * sizeof(struct Edge));
+    ni += actives - ai;
+    ni += changes - ci;
+
+    actives = ni;
+    prev_y = y;
+    rs = re;
+    activeRow ^= 1;
+  }
+
+  return result;
+}
+
+struct ToFramebufferData
+{
+  KVMFRFrameBuffer * frame;
+  int                pitch;
+};
+
+static void fbRowFinish(int y, void * opaque)
+{
+  struct ToFramebufferData * data = opaque;
+  framebuffer_set_write_ptr(
+      data->frame, (size_t)y * (size_t)data->pitch);
+}
+
+bool rectsBufferToFramebuffer(const KVMFRFrameDamageRect * rects,
+  int count, int bpp,
+  KVMFRFrameBuffer * frame, int dstPitch, int height,
+  const uint8_t * src, int srcPitch)
+{
+  if (!rects || !frame || count <= 0)
+    return false;
+
+  struct ToFramebufferData data = { .frame = frame, .pitch = dstPitch };
+  const bool publishRows = count <= LG_MAX_FRAME_DAMAGE_RECTS;
+  for (int offset = 0; offset < count; )
+  {
+    const int batch = min(count - offset, LG_MAX_FRAME_DAMAGE_RECTS);
+    if (!rectsBufferCopy(rects + offset, batch, bpp,
+          framebuffer_get_data(frame), dstPitch, height, src, srcPitch,
+          &data, NULL, publishRows ? fbRowFinish : NULL))
+      return false;
+    offset += batch;
+  }
+
+  framebuffer_set_write_ptr(
+      frame, (size_t)height * (size_t)dstPitch);
+  return true;
+}
+
+struct FromFramebufferData
+{
+  const KVMFRFrameBuffer * frame;
+  int                      pitch;
+  uint64_t               * waitTimeNs;
+};
+
+static bool fbRowStart(int y, void * opaque)
+{
+  struct FromFramebufferData * data = opaque;
+  return framebuffer_wait_timed(
+      data->frame, (size_t)y * (size_t)data->pitch, data->waitTimeNs);
+}
+
+bool rectsFramebufferToBufferTimed(const KVMFRFrameDamageRect * rects,
+  int count, int bpp,
+  uint8_t * dst, int dstPitch, int height,
+  const KVMFRFrameBuffer * frame, int srcPitch, uint64_t * waitTimeNs)
+{
+  if (!rects || !frame || count <= 0)
+    return false;
+
+  struct FromFramebufferData data =
+  {
+    .frame      = frame,
+    .pitch      = srcPitch,
+    .waitTimeNs = waitTimeNs
+  };
+  for (int offset = 0; offset < count; )
+  {
+    const int batch = min(count - offset, LG_MAX_FRAME_DAMAGE_RECTS);
+    if (!rectsBufferCopy(rects + offset, batch, bpp, dst, dstPitch, height,
+          framebuffer_get_buffer(frame), srcPitch,
+          &data, fbRowStart, NULL))
+      return false;
+    offset += batch;
+  }
+
+  return true;
+}
+
+bool rectsFramebufferToBuffer(const KVMFRFrameDamageRect * rects,
+  int count, int bpp,
+  uint8_t * dst, int dstPitch, int height,
+  const KVMFRFrameBuffer * frame, int srcPitch)
+{
+  return rectsFramebufferToBufferTimed(rects, count, bpp, dst, dstPitch,
+      height, frame, srcPitch, NULL);
+}
+
+int rectsMergeOverlapping(KVMFRFrameDamageRect * rects, int count)
+{
+  if (count == 0)
+    return 0;
+
+  bool removed[count];
+  bool changed;
+
+  memset(removed, 0, sizeof(removed));
+
+  do
+  {
+    changed = false;
+    for (int i = 0; i < count; ++i)
+    {
+      if (removed[i])
+        continue;
+
+      for (int j = i + 1; j < count; ++j)
+      {
+        if (removed[j] || !rectIntersects(rects + i, rects + j))
+          continue;
+
+        const uint32_t x2 = max(rects[i].x + rects[i].width,
+            rects[j].x + rects[j].width);
+        const uint32_t y2 = max(rects[i].y + rects[i].height,
+            rects[j].y + rects[j].height);
+
+        rects[i].x      = min(rects[i].x, rects[j].x);
+        rects[i].y      = min(rects[i].y, rects[j].y);
+        rects[i].width  = x2 - rects[i].x;
+        rects[i].height = y2 - rects[i].y;
+
+        removed[j] = true;
+        changed    = true;
+      }
+    }
+  }
+  while (changed);
+
+  return removeRects(rects, count, removed);
+}
+
+int rectsRejectContained(KVMFRFrameDamageRect * rects, int count)
+{
+  bool removed[count];
+  memset(removed, 0, sizeof(removed));
+
+  for (int i = 0; i < count; ++i)
+  {
+    if (removed[i])
+      continue;
+
+    for (int j = 0; j < count; ++j)
+    {
+      if (j == i || removed[j])
+        continue;
+
+      removed[j] = rectContains(rects + i, rects + j);
+    }
+  }
+
+  return removeRects(rects, count, removed);
+}
+
+static void rectCopyUnaligned_memcpy(
+    uint8_t *restrict dst, const uint8_t *restrict src,
+    int ystart, int yend, int dx, int dstPitch, int srcPitch, int width)
+{
+  src += (size_t)ystart * (size_t)srcPitch + (size_t)dx;
+  dst += (size_t)ystart * (size_t)dstPitch + (size_t)dx;
+  for (int i = ystart; i < yend; ++i)
+  {
+    memcpy(dst, src, width);
+    if (i + 1 < yend)
+    {
+      src += srcPitch;
+      dst += dstPitch;
+    }
+  }
+}
+
+#ifdef __clang__
+  #pragma clang attribute push (__attribute__((target("avx"))), apply_to=function)
+#else
+  #pragma GCC push_options
+  #pragma GCC target ("avx")
+#endif
+static void rectCopyUnaligned_avx(
+    uint8_t *restrict dst, const uint8_t *restrict src,
+    int ystart, int yend, int dx, int dstPitch, int srcPitch, int width)
+{
+  src += (size_t)ystart * (size_t)srcPitch + (size_t)dx;
+  dst += (size_t)ystart * (size_t)dstPitch + (size_t)dx;
+
+  bool streamed = false;
+  for (int i = ystart; i < yend; ++i)
+  {
+    /*
+     * dstPitch is not necessarily a multiple of the AVX store alignment.
+     * Recalculate the prefix for every row so the streaming stores remain
+     * aligned for packed 24-bit and odd-width framebuffers.
+     */
+    const int rowAlign = (32 - ((uintptr_t)dst & 31)) & 31;
+    const int align    = min(rowAlign, width);
+    const int nvec     = (width - align) / sizeof(__m256i);
+    const int rem      = (width - align) % sizeof(__m256i);
+    streamed |= nvec > 0;
+
+    // copy the unaligned bytes
+    for(int col = align - 1; col >= 0; --col)
+      dst[col] = src[col];
+
+    const __m256i *restrict s = (__m256i*)(src + align);
+          __m256i *restrict d = (__m256i*)(dst + align);
+
+    int vec;
+    for(vec = nvec; vec > 3; vec -= 4)
+    {
+      _mm256_stream_si256(d + 0, _mm256_loadu_si256(s + 0));
+      _mm256_stream_si256(d + 1, _mm256_loadu_si256(s + 1));
+      _mm256_stream_si256(d + 2, _mm256_loadu_si256(s + 2));
+      _mm256_stream_si256(d + 3, _mm256_loadu_si256(s + 3));
+
+      s += 4;
+      d += 4;
+    }
+
+    for(; vec > 0; --vec, ++d, ++s)
+      _mm256_stream_si256(d, _mm256_loadu_si256(s));
+
+    // copy any remaining bytes
+    for(int col = width - rem; col < width; ++col)
+      dst[col] = src[col];
+
+    if (i + 1 < yend)
+    {
+      src += srcPitch;
+      dst += dstPitch;
+    }
+  }
+
+  if (streamed)
+    _mm_sfence();
+}
+#ifdef __clang__
+  #pragma clang attribute pop
+#else
+  #pragma GCC pop_options
+#endif
+
+static void _rectCopyUnaligned(
+  uint8_t *restrict dst, const uint8_t *restrict src,
+    int ystart, int yend, int dx, int dstPitch, int srcPitch, int width)
+{
+  if (cpuInfo_getFeatures()->avx)
+    rectCopyUnaligned = &rectCopyUnaligned_avx;
+  else
+    rectCopyUnaligned = &rectCopyUnaligned_memcpy;
+
+  return rectCopyUnaligned(
+      dst, src, ystart, yend, dx, dstPitch, srcPitch, width);
+}
+
+void (*rectCopyUnaligned)(uint8_t * dst, const uint8_t * src,
+    int ystart, int yend, int dx, int dstPitch, int srcPitch, int width) =
+  &_rectCopyUnaligned;

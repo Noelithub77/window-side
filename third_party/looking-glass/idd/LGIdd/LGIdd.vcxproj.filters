@@ -1,0 +1,445 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0"
+  xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Driver">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="IPC">
+      <UniqueIdentifier>{6A9D97A5-1A6C-4A95-A2D0-A7C2D6BE459D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Input">
+      <UniqueIdentifier>{B37D983B-12F1-41AE-8375-1B9B90A64F87}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Display">
+      <UniqueIdentifier>{D2C16E51-6087-4E08-8DA4-5AD1A60EF58E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Capture">
+      <UniqueIdentifier>{202B79B2-5CCF-4AD4-B4C5-F5602419683D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="D3D">
+      <UniqueIdentifier>{4B3C58D3-5F40-49AB-894E-B83EB44E6CF5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Post-processing">
+      <UniqueIdentifier>{A2E40D7C-854F-42E2-8730-A1BFD37A6BB0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Post-processing\Effects">
+      <UniqueIdentifier>{52F1286F-0C64-41B9-92A9-4453C80B1001}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Transport">
+      <UniqueIdentifier>{22FDF1F6-0A8C-4B96-9E74-53D74733CC0A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Transport\LGMP">
+      <UniqueIdentifier>{530EE339-4AD6-4AE7-9A74-09420E73D04B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Configuration">
+      <UniqueIdentifier>{82810F1C-E51C-4DBD-86B2-1CDE8C16A2A9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Platform">
+      <UniqueIdentifier>{1C677205-7587-4037-9E36-92DFE600B985}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utilities">
+      <UniqueIdentifier>{98768720-86D6-4A83-9EBD-2C8BFB51D793}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cpp.hint" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Inf Include="LGIdd.inf">
+      <Filter>Driver</Filter>
+    </Inf>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Device.h">
+      <Filter>Driver</Filter>
+    </ClInclude>
+    <ClInclude Include="Driver.h">
+      <Filter>Driver</Filter>
+    </ClInclude>
+    <ClInclude Include="Trace.h">
+      <Filter>Driver</Filter>
+    </ClInclude>
+    <ClInclude Include="input\IInputSink.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="ipc\CPipeServer.h">
+      <Filter>IPC</Filter>
+    </ClInclude>
+    <ClInclude Include="ipc\CInputPipeServer.h">
+      <Filter>IPC</Filter>
+    </ClInclude>
+    <ClInclude Include="display\CDisplayConfiguration.h">
+      <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="display\CEdid.h">
+      <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="display\CMonitorManager.h">
+      <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="display\IddCxCompat.h">
+      <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="display\CDeviceContext.h">
+      <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="display\CMonitorContext.h">
+      <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameBufferPool.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameBufferResource.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameExec.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameGraph.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameTex.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameProcessor.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameProcessorUtil.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CFrameScheduler.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\FramePipeline.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CHardwareFrameProcessor.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CSoftwareFrameProcessor.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="capture\CSwapChainProcessor.h">
+      <Filter>Capture</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d\CInteropPool.h">
+      <Filter>D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d\CD3D11Device.h">
+      <Filter>D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d\CD3D12CommandQueue.h">
+      <Filter>D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d\CD3D12Device.h">
+      <Filter>D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d\CInteropResource.h">
+      <Filter>D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d\CInteropResourcePool.h">
+      <Filter>D3D</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\CPostProcessor.h">
+      <Filter>Post-processing</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\D12FrameFormat.h">
+      <Filter>Post-processing</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\effect\CColorTransformEffect.h">
+      <Filter>Post-processing\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\effect\CComputeEffect.h">
+      <Filter>Post-processing\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\effect\CDownsampleEffect.h">
+      <Filter>Post-processing\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\effect\CFormatEffect.h">
+      <Filter>Post-processing\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\effect\CHDR16to10Effect.h">
+      <Filter>Post-processing\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="postprocess\effect\CRGB24Effect.h">
+      <Filter>Post-processing\Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\CClipboardHub.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\CControlHub.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\CFrameHub.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\CInputHub.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\CRecoveryHub.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\CTexHub.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\CTransportManager.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\DirectFrameBufferMemory.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\FrameCaps.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\FrameProfile.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\FrameIn.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\IClipboardSource.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\IControlSink.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\IControlTransport.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\IFrameSink.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\IFrameTransport.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\IInputTransport.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\IInputSource.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\ITransport.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\ITexSink.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\ITexStage.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\TransportConfig.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\PreparedFrameBuffer.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\TransportFactory.h">
+      <Filter>Transport</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CIVSHMEM.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CRecovery.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPClipboardTransport.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPClipboardFiles.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPControl.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPFrameCaps.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPFrameTransport.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPHost.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPInputTransport.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="transport\lgmp\CLGMPTransport.h">
+      <Filter>Transport\LGMP</Filter>
+    </ClInclude>
+    <ClInclude Include="config\CSettings.h">
+      <Filter>Configuration</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\CPlatformInfo.h">
+      <Filter>Platform</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Driver.cpp">
+      <Filter>Driver</Filter>
+    </ClCompile>
+    <ClCompile Include="Device.cpp">
+      <Filter>Driver</Filter>
+    </ClCompile>
+    <ClCompile Include="ipc\CPipeServer.cpp">
+      <Filter>IPC</Filter>
+    </ClCompile>
+    <ClCompile Include="ipc\CInputPipeServer.cpp">
+      <Filter>IPC</Filter>
+    </ClCompile>
+    <ClCompile Include="display\CDisplayConfiguration.cpp">
+      <Filter>Display</Filter>
+    </ClCompile>
+    <ClCompile Include="display\CEdid.cpp">
+      <Filter>Display</Filter>
+    </ClCompile>
+    <ClCompile Include="display\CMonitorManager.cpp">
+      <Filter>Display</Filter>
+    </ClCompile>
+    <ClCompile Include="display\CDeviceContext.cpp">
+      <Filter>Display</Filter>
+    </ClCompile>
+    <ClCompile Include="display\CMonitorContext.cpp">
+      <Filter>Display</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameBufferPool.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameBufferResource.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameExec.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameGraph.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameTex.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameProcessor.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameProcessorUtil.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CFrameScheduler.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CHardwareFrameProcessor.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CSoftwareFrameProcessor.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="capture\CSwapChainProcessor.cpp">
+      <Filter>Capture</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d\CInteropPool.cpp">
+      <Filter>D3D</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d\CD3D11Device.cpp">
+      <Filter>D3D</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d\CD3D12CommandQueue.cpp">
+      <Filter>D3D</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d\CD3D12Device.cpp">
+      <Filter>D3D</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d\CInteropResource.cpp">
+      <Filter>D3D</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d\CInteropResourcePool.cpp">
+      <Filter>D3D</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\CPostProcessor.cpp">
+      <Filter>Post-processing</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\D12FrameFormat.cpp">
+      <Filter>Post-processing</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\effect\CColorTransformEffect.cpp">
+      <Filter>Post-processing\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\effect\CComputeEffect.cpp">
+      <Filter>Post-processing\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\effect\CDownsampleEffect.cpp">
+      <Filter>Post-processing\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\effect\CFormatEffect.cpp">
+      <Filter>Post-processing\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\effect\CHDR16to10Effect.cpp">
+      <Filter>Post-processing\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="postprocess\effect\CRGB24Effect.cpp">
+      <Filter>Post-processing\Effects</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\CClipboardHub.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\CControlHub.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\CFrameHub.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\CInputHub.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\CRecoveryHub.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\CTexHub.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\CTransportManager.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\TransportConfig.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\TransportFactory.cpp">
+      <Filter>Transport</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CIVSHMEM.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CRecovery.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPClipboardTransport.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPClipboardFiles.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPControl.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPFrameCaps.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPFrameTransport.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPHost.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPInputTransport.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="transport\lgmp\CLGMPTransport.cpp">
+      <Filter>Transport\LGMP</Filter>
+    </ClCompile>
+    <ClCompile Include="config\CSettings.cpp">
+      <Filter>Configuration</Filter>
+    </ClCompile>
+    <ClCompile Include="platform\CPlatformInfo.cpp">
+      <Filter>Platform</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

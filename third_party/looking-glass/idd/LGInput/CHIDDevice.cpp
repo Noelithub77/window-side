@@ -1,0 +1,876 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#include "CHIDDevice.h"
+
+#include "CDebug.h"
+#include "config/CSettings.h"
+#include "CSRWLock.h"
+#include "HIDReports.h"
+#include "ipc/CInputPipeClient.h"
+
+#include <hidport.h>
+#include <limits.h>
+#include <new>
+#include <string.h>
+
+static constexpr USHORT LG_INPUT_VENDOR_ID          = 0x0000;
+static constexpr USHORT LG_INPUT_PRODUCT_ID         = 0x0000;
+static constexpr USHORT LG_INPUT_VERSION            = 0x0001;
+static constexpr size_t REPORT_QUEUE_LENGTH         = 64;
+static constexpr size_t MOTION_COALESCE_THRESHOLD   =
+  REPORT_QUEUE_LENGTH / 2;
+
+struct HIDQueuedReport
+{
+  UCHAR  data[HID_MAX_INPUT_REPORT_SIZE];
+  bool   pureMotion;
+  size_t size;
+};
+
+struct HIDStatistics
+{
+  uint64_t direct;
+  uint64_t queued;
+  uint64_t relativeCoalesced;
+  uint64_t absoluteCoalesced;
+  uint64_t staleAbsoluteCompacted;
+  uint64_t keyboardDuplicates;
+  uint64_t consumerDuplicates;
+  uint64_t overflows;
+  uint64_t resetDiscarded;
+  size_t   queueHighWater;
+};
+
+struct HIDDeviceContext
+{
+  WDFQUEUE              reportQueue;
+  HID_DEVICE_ATTRIBUTES attributes;
+  HID_DESCRIPTOR        descriptor;
+  UCHAR                 keyboardLeds;
+  CSRWLock              lifecycleLock;
+  CSRWLock              reportLock;
+  bool                  active;
+  bool                  stopping;
+  UCHAR                 mouseMode;
+  size_t                reportHead;
+  size_t                reportCount;
+  uint32_t              relativeButtons;
+  uint32_t              absoluteButtons;
+  uint16_t              consumerUsage;
+  uint16_t              absoluteX;
+  uint16_t              absoluteY;
+  HIDStatistics         statistics;
+  HIDQueuedReport       reports[REPORT_QUEUE_LENGTH];
+  CInputPipeClient *    inputPipe;
+  WDFREQUEST            deactivateRequest;
+};
+
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(HIDDeviceContext, HIDGetDeviceContext);
+
+static CSRWLock           s_deviceLock;
+static HIDDeviceContext * s_device = nullptr;
+
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL HIDEvtIoDeviceControl;
+EVT_WDF_IO_QUEUE_STATE HIDEvtReportQueuePurged;
+EVT_WDF_OBJECT_CONTEXT_CLEANUP HIDEvtReportQueueCleanup;
+EVT_WDF_OBJECT_CONTEXT_CLEANUP HIDEvtDeviceCleanup;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_INIT HIDEvtSelfManagedIoInit;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_CLEANUP HIDEvtSelfManagedIoCleanup;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_FLUSH HIDEvtSelfManagedIoFlush;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_SUSPEND HIDEvtSelfManagedIoSuspend;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_RESTART HIDEvtSelfManagedIoRestart;
+
+static NTSTATUS CopyToRequest(
+  _In_ WDFREQUEST request,
+  _In_reads_bytes_(size) const void * buffer,
+  _In_ size_t size)
+{
+  WDFMEMORY memory;
+  NTSTATUS  status = WdfRequestRetrieveOutputMemory(request, &memory);
+  if (!NT_SUCCESS(status))
+    return status;
+
+  size_t bufferSize;
+  WdfMemoryGetBuffer(memory, &bufferSize);
+  if (bufferSize < size)
+    return STATUS_BUFFER_TOO_SMALL;
+
+  status = WdfMemoryCopyFromBuffer(
+    memory, 0, const_cast<void *>(buffer), size);
+  if (NT_SUCCESS(status))
+    WdfRequestSetInformation(request, size);
+
+  return status;
+}
+
+static NTSTATUS GetOutputReport(
+  _In_ WDFREQUEST request,
+  _Out_ HID_XFER_PACKET * packet)
+{
+  WDFMEMORY memory;
+  NTSTATUS  status = WdfRequestRetrieveOutputMemory(request, &memory);
+  if (!NT_SUCCESS(status))
+    return status;
+
+  // mshidumdf carries the report ID in the output buffer length.
+  size_t outputBufferLength;
+  WdfMemoryGetBuffer(memory, &outputBufferLength);
+  packet->reportId = static_cast<UCHAR>(outputBufferLength);
+
+  status = WdfRequestRetrieveInputMemory(request, &memory);
+  if (!NT_SUCCESS(status))
+    return status;
+
+  size_t reportSize;
+  packet->reportBuffer    =
+    static_cast<PUCHAR>(WdfMemoryGetBuffer(memory, &reportSize));
+  packet->reportBufferLen = static_cast<ULONG>(reportSize);
+  return STATUS_SUCCESS;
+}
+
+static NTSTATUS SetOutputReport(
+  _In_ WDFQUEUE queue,
+  _In_ WDFREQUEST request)
+{
+  HID_XFER_PACKET packet = {};
+  NTSTATUS        status = GetOutputReport(request, &packet);
+  if (!NT_SUCCESS(status))
+    return status;
+
+  if (packet.reportId != HID_REPORT_ID_KEYBOARD ||
+      packet.reportBufferLen < sizeof(HIDKeyboardLedsReport))
+    return STATUS_INVALID_PARAMETER;
+
+  const HIDKeyboardLedsReport * report =
+    reinterpret_cast<const HIDKeyboardLedsReport *>(packet.reportBuffer);
+  if (report->reportId != HID_REPORT_ID_KEYBOARD)
+    return STATUS_INVALID_PARAMETER;
+
+  WDFDEVICE device = WdfIoQueueGetDevice(queue);
+  HIDDeviceContext * context = HIDGetDeviceContext(device);
+  context->keyboardLeds = report->leds;
+  if (context->inputPipe)
+    context->inputPipe->UpdateKeyboardLEDs(report->leds);
+  WdfRequestSetInformation(request, sizeof(*report));
+  return STATUS_SUCCESS;
+}
+
+static void PopReport(
+  _Inout_ HIDDeviceContext * context,
+  _Out_ HIDQueuedReport * report)
+{
+  *report = context->reports[context->reportHead];
+  context->reportHead =
+    (context->reportHead + 1) % REPORT_QUEUE_LENGTH;
+  --context->reportCount;
+}
+
+static HIDQueuedReport& GetQueuedReport(
+  _Inout_ HIDDeviceContext * context,
+  _In_ size_t position)
+{
+  return context->reports[
+    (context->reportHead + position) % REPORT_QUEUE_LENGTH];
+}
+
+static void RemoveQueuedReport(
+  _Inout_ HIDDeviceContext * context,
+  _In_ size_t position)
+{
+  for (size_t i = position; i + 1 < context->reportCount; ++i)
+    GetQueuedReport(context, i) = GetQueuedReport(context, i + 1);
+  --context->reportCount;
+}
+
+static bool CompactStaleMotion(
+  _Inout_ HIDDeviceContext * context,
+  _In_ UCHAR incomingReportId)
+{
+  for (size_t i = 0; i < context->reportCount; ++i)
+  {
+    HIDQueuedReport& report = GetQueuedReport(context, i);
+    if (!report.pureMotion ||
+        report.data[0] != HID_REPORT_ID_MOUSE_ABSOLUTE)
+      continue;
+
+    bool superseded = incomingReportId == HID_REPORT_ID_MOUSE_ABSOLUTE;
+    for (size_t j = i + 1; !superseded && j < context->reportCount; ++j)
+      superseded = GetQueuedReport(context, j).data[0] ==
+        HID_REPORT_ID_MOUSE_ABSOLUTE;
+
+    if (superseded)
+    {
+      RemoveQueuedReport(context, i);
+      ++context->statistics.staleAbsoluteCompacted;
+      return true;
+    }
+  }
+  return false;
+}
+
+static NTSTATUS QueueReport(
+  _Inout_ HIDDeviceContext * context,
+  _In_reads_bytes_(size) const void * data,
+  _In_ size_t size,
+  _In_ bool pureMotion)
+{
+  const UCHAR reportId = *static_cast<const UCHAR *>(data);
+  if (context->reportCount)
+  {
+    HIDQueuedReport& tail =
+      GetQueuedReport(context, context->reportCount - 1);
+    if (tail.data[0] == reportId)
+    {
+      if (reportId == HID_REPORT_ID_MOUSE_RELATIVE &&
+          context->reportCount >= MOTION_COALESCE_THRESHOLD &&
+          tail.pureMotion && pureMotion)
+      {
+        HIDMouseRelativeReport * previous =
+          reinterpret_cast<HIDMouseRelativeReport *>(tail.data);
+        const HIDMouseRelativeReport * current =
+          static_cast<const HIDMouseRelativeReport *>(data);
+        const int32_t x = static_cast<int32_t>(previous->x) +
+          current->x;
+        const int32_t y = static_cast<int32_t>(previous->y) +
+          current->y;
+        if (x >= INT16_MIN && x <= INT16_MAX &&
+            y >= INT16_MIN && y <= INT16_MAX &&
+            previous->buttons == current->buttons)
+        {
+          previous->x = static_cast<int16_t>(x);
+          previous->y = static_cast<int16_t>(y);
+          ++context->statistics.relativeCoalesced;
+          return STATUS_SUCCESS;
+        }
+      }
+      else if (reportId == HID_REPORT_ID_MOUSE_ABSOLUTE &&
+          tail.pureMotion && pureMotion)
+      {
+        const HIDMouseAbsoluteReport * previous =
+          reinterpret_cast<const HIDMouseAbsoluteReport *>(tail.data);
+        const HIDMouseAbsoluteReport * current =
+          static_cast<const HIDMouseAbsoluteReport *>(data);
+        if (previous->buttons == current->buttons)
+        {
+          CopyMemory(tail.data, data, size);
+          tail.size = size;
+          ++context->statistics.absoluteCoalesced;
+          return STATUS_SUCCESS;
+        }
+      }
+      else if (reportId == HID_REPORT_ID_KEYBOARD &&
+          tail.size == size && memcmp(tail.data, data, size) == 0)
+      {
+        ++context->statistics.keyboardDuplicates;
+        return STATUS_SUCCESS;
+      }
+    }
+  }
+
+  if (context->reportCount == REPORT_QUEUE_LENGTH)
+  {
+    if (!CompactStaleMotion(context, reportId))
+    {
+      ++context->statistics.overflows;
+      return STATUS_BUFFER_OVERFLOW;
+    }
+  }
+
+  const size_t index =
+    (context->reportHead + context->reportCount) % REPORT_QUEUE_LENGTH;
+  HIDQueuedReport * report = &context->reports[index];
+  CopyMemory(report->data, data, size);
+  report->size       = size;
+  report->pureMotion = pureMotion;
+  ++context->reportCount;
+  ++context->statistics.queued;
+  if (context->reportCount > context->statistics.queueHighWater)
+    context->statistics.queueHighWater = context->reportCount;
+  return STATUS_SUCCESS;
+}
+
+static NTSTATUS ReadReport(
+  _In_ HIDDeviceContext * context,
+  _In_ WDFREQUEST request,
+  _Out_ bool * complete)
+{
+  HIDQueuedReport report = {};
+  bool            haveReport = false;
+  *complete = true;
+
+  NTSTATUS status;
+  {
+    CSRWExclusiveLock lock(context->reportLock);
+    if (context->stopping || !context->active)
+      status = STATUS_DEVICE_NOT_READY;
+    else if (context->reportCount)
+    {
+      PopReport(context, &report);
+      haveReport = true;
+      status = STATUS_SUCCESS;
+    }
+    else
+    {
+      status = WdfRequestForwardToIoQueue(request, context->reportQueue);
+      *complete = !NT_SUCCESS(status);
+    }
+  }
+
+  if (haveReport)
+    status = CopyToRequest(request, report.data, report.size);
+  return status;
+}
+
+static NTSTATUS ActivateDevice(_Inout_ HIDDeviceContext * context)
+{
+  CSRWExclusiveLock lifecycleLock(context->lifecycleLock);
+  CSRWExclusiveLock lock(context->reportLock);
+  if (context->stopping || context->deactivateRequest)
+    return STATUS_DEVICE_NOT_READY;
+
+  WdfIoQueueStart(context->reportQueue);
+  context->active = true;
+  return STATUS_SUCCESS;
+}
+
+static NTSTATUS DeactivateDevice(
+  _Inout_ HIDDeviceContext * context,
+  _In_ WDFREQUEST request,
+  _Out_ bool * complete)
+{
+  {
+    CSRWExclusiveLock lifecycleLock(context->lifecycleLock);
+    {
+      CSRWExclusiveLock lock(context->reportLock);
+      if (context->stopping)
+        return STATUS_DEVICE_NOT_READY;
+      if (context->deactivateRequest)
+        return STATUS_DEVICE_BUSY;
+
+      context->active        = false;
+      context->reportHead    = 0;
+      context->reportCount   = 0;
+      context->consumerUsage = UINT16_MAX;
+    }
+
+    context->deactivateRequest = request;
+  }
+
+  // WDF forbids synchronously purging any queue from EvtIoDeviceControl.
+  // Keep the HID deactivation request pending until the asynchronous purge
+  // has canceled every outstanding read report.
+  *complete = false;
+  WdfIoQueuePurge(
+    context->reportQueue, HIDEvtReportQueuePurged, context);
+  return STATUS_PENDING;
+}
+
+static NTSTATUS CreateQueues(_In_ WDFDEVICE device)
+{
+  WDF_IO_QUEUE_CONFIG queueConfig;
+  WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(
+    &queueConfig, WdfIoQueueDispatchParallel);
+  queueConfig.EvtIoDeviceControl = HIDEvtIoDeviceControl;
+
+  NTSTATUS status = WdfIoQueueCreate(
+    device, &queueConfig, WDF_NO_OBJECT_ATTRIBUTES, WDF_NO_HANDLE);
+  if (!NT_SUCCESS(status))
+    return status;
+
+  WDF_IO_QUEUE_CONFIG_INIT(&queueConfig, WdfIoQueueDispatchManual);
+
+  WDF_OBJECT_ATTRIBUTES queueAttributes;
+  WDF_OBJECT_ATTRIBUTES_INIT(&queueAttributes);
+  queueAttributes.EvtCleanupCallback = HIDEvtReportQueueCleanup;
+  return WdfIoQueueCreate(
+    device,
+    &queueConfig,
+    &queueAttributes,
+    &HIDGetDeviceContext(device)->reportQueue);
+}
+
+NTSTATUS CHIDDevice::Create(_Inout_ PWDFDEVICE_INIT deviceInit)
+{
+  WdfFdoInitSetFilter(deviceInit);
+
+  WDF_PNPPOWER_EVENT_CALLBACKS pnpPowerCallbacks;
+  WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpPowerCallbacks);
+  pnpPowerCallbacks.EvtDeviceSelfManagedIoInit = HIDEvtSelfManagedIoInit;
+  pnpPowerCallbacks.EvtDeviceSelfManagedIoCleanup =
+    HIDEvtSelfManagedIoCleanup;
+  pnpPowerCallbacks.EvtDeviceSelfManagedIoFlush = HIDEvtSelfManagedIoFlush;
+  pnpPowerCallbacks.EvtDeviceSelfManagedIoSuspend =
+    HIDEvtSelfManagedIoSuspend;
+  pnpPowerCallbacks.EvtDeviceSelfManagedIoRestart =
+    HIDEvtSelfManagedIoRestart;
+  WdfDeviceInitSetPnpPowerEventCallbacks(deviceInit, &pnpPowerCallbacks);
+
+  WDF_OBJECT_ATTRIBUTES attributes;
+  WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes, HIDDeviceContext);
+  attributes.EvtCleanupCallback = HIDEvtDeviceCleanup;
+
+  WDFDEVICE device;
+  NTSTATUS  status = WdfDeviceCreate(&deviceInit, &attributes, &device);
+  if (!NT_SUCCESS(status))
+    return status;
+
+  HIDDeviceContext * context = HIDGetDeviceContext(device);
+  new (context) HIDDeviceContext {};
+  context->active    = true;
+  context->inputPipe = new (std::nothrow) CInputPipeClient;
+  if (!context->inputPipe)
+    return STATUS_INSUFFICIENT_RESOURCES;
+
+  context->attributes.Size          =
+    static_cast<ULONG>(sizeof(context->attributes));
+  context->attributes.VendorID      = LG_INPUT_VENDOR_ID;
+  context->attributes.ProductID     = LG_INPUT_PRODUCT_ID;
+  context->attributes.VersionNumber = LG_INPUT_VERSION;
+
+  context->descriptor.bLength                 =
+    static_cast<UCHAR>(sizeof(context->descriptor));
+  context->descriptor.bDescriptorType         = HID_HID_DESCRIPTOR_TYPE;
+  context->descriptor.bcdHID                  = 0x0111;
+  context->descriptor.bCountry                = 0;
+  context->descriptor.bNumDescriptors         = 1;
+  auto & reportDescriptor = context->descriptor.DescriptorList[0];
+  reportDescriptor.bReportType    = HID_REPORT_DESCRIPTOR_TYPE;
+  reportDescriptor.wReportLength =
+    static_cast<USHORT>(HIDGetReportDescriptorSize());
+
+  status = CreateQueues(device);
+  if (!NT_SUCCESS(status))
+    return status;
+
+  {
+    CSRWExclusiveLock lock(s_deviceLock);
+    if (s_device)
+    {
+      DEBUG_ERROR("Only one LGInput device instance is supported");
+      return STATUS_DEVICE_BUSY;
+    }
+    s_device = context;
+  }
+  return STATUS_SUCCESS;
+}
+
+NTSTATUS CHIDDevice::SubmitReport(
+  _In_reads_bytes_(size) const void * report,
+  _In_ size_t size)
+{
+  if (!report || !size)
+    return STATUS_INVALID_PARAMETER;
+
+  const UCHAR reportId = *static_cast<const UCHAR *>(report);
+  if (HIDGetInputReportSize(reportId) != size)
+    return STATUS_INVALID_PARAMETER;
+
+  CSRWSharedLock deviceLock(s_deviceLock);
+  HIDDeviceContext * context = s_device;
+  if (!context)
+    return STATUS_DEVICE_NOT_READY;
+
+  WDFREQUEST request = nullptr;
+  NTSTATUS   status;
+  {
+    CSRWExclusiveLock reportLock(context->reportLock);
+    if (context->stopping || !context->active)
+      status = STATUS_DEVICE_NOT_READY;
+    else
+    {
+      if (reportId == HID_REPORT_ID_CONSUMER &&
+          context->consumerUsage ==
+            static_cast<const HIDConsumerReport *>(report)->usage)
+      {
+        ++context->statistics.consumerDuplicates;
+        return STATUS_SUCCESS;
+      }
+
+      bool pureMotion = false;
+      switch (reportId)
+      {
+        case HID_REPORT_ID_MOUSE_RELATIVE:
+        {
+          const HIDMouseRelativeReport * mouse =
+            static_cast<const HIDMouseRelativeReport *>(report);
+          pureMotion = context->mouseMode == reportId &&
+            (mouse->x != 0 || mouse->y != 0 || mouse->buttons != 0) &&
+            mouse->wheel == 0 &&
+            mouse->buttons == context->relativeButtons;
+          break;
+        }
+
+        case HID_REPORT_ID_MOUSE_ABSOLUTE:
+        {
+          const HIDMouseAbsoluteReport * mouse =
+            static_cast<const HIDMouseAbsoluteReport *>(report);
+          pureMotion = context->mouseMode == reportId &&
+            (mouse->x != context->absoluteX ||
+             mouse->y != context->absoluteY || mouse->buttons != 0) &&
+            mouse->wheel == 0 &&
+            mouse->buttons == context->absoluteButtons;
+          break;
+        }
+
+        default:
+          break;
+      }
+
+      status = WdfIoQueueRetrieveNextRequest(context->reportQueue, &request);
+      if (status == STATUS_NO_MORE_ENTRIES)
+      {
+        request = nullptr;
+        status = QueueReport(context, report, size, pureMotion);
+      }
+      else if (NT_SUCCESS(status))
+      {
+        status = CopyToRequest(request, report, size);
+        if (NT_SUCCESS(status))
+          ++context->statistics.direct;
+      }
+
+      if (NT_SUCCESS(status))
+      {
+        switch (reportId)
+        {
+          case HID_REPORT_ID_MOUSE_RELATIVE:
+            context->mouseMode = reportId;
+            context->relativeButtons =
+              static_cast<const HIDMouseRelativeReport *>(report)->buttons;
+            break;
+
+          case HID_REPORT_ID_MOUSE_ABSOLUTE:
+          {
+            const HIDMouseAbsoluteReport * mouse =
+              static_cast<const HIDMouseAbsoluteReport *>(report);
+            context->mouseMode       = reportId;
+            context->absoluteButtons = mouse->buttons;
+            context->absoluteX       = mouse->x;
+            context->absoluteY       = mouse->y;
+            break;
+          }
+
+          case HID_REPORT_ID_CONSUMER:
+            context->consumerUsage =
+              static_cast<const HIDConsumerReport *>(report)->usage;
+            break;
+
+          default:
+            break;
+        }
+      }
+    }
+  }
+
+  if (request)
+    WdfRequestComplete(request, status);
+
+  return status;
+}
+
+NTSTATUS CHIDDevice::ResetReports()
+{
+  UCHAR    mouseMode    = 0;
+  uint32_t mouseButtons = 0;
+  uint16_t absoluteX    = 0;
+  uint16_t absoluteY    = 0;
+  {
+    CSRWSharedLock deviceLock(s_deviceLock);
+    HIDDeviceContext * context = s_device;
+    if (!context)
+      return STATUS_DEVICE_NOT_READY;
+
+    CSRWExclusiveLock reportLock(context->reportLock);
+    if (context->stopping)
+      return STATUS_DEVICE_NOT_READY;
+
+    mouseMode                  = context->mouseMode;
+    mouseButtons               = mouseMode == HID_REPORT_ID_MOUSE_ABSOLUTE ?
+      context->absoluteButtons : context->relativeButtons;
+    absoluteX                  = context->absoluteX;
+    absoluteY                  = context->absoluteY;
+    context->statistics.resetDiscarded += context->reportCount;
+    context->reportHead        = 0;
+    context->reportCount       = 0;
+    context->mouseMode         = 0;
+    context->relativeButtons   = 0;
+    context->absoluteButtons   = 0;
+    context->consumerUsage     = UINT16_MAX;
+  }
+
+  const HIDKeyboardReport keyboard = {
+    HID_REPORT_ID_KEYBOARD,
+  };
+  const HIDConsumerReport consumer = {
+    HID_REPORT_ID_CONSUMER,
+  };
+
+  NTSTATUS status = STATUS_SUCCESS;
+  if (mouseButtons)
+  {
+    switch (mouseMode)
+    {
+      case HID_REPORT_ID_MOUSE_RELATIVE:
+      {
+        const HIDMouseRelativeReport relative = {
+          HID_REPORT_ID_MOUSE_RELATIVE,
+          0,
+          0,
+          0,
+          0,
+        };
+        status = SubmitReport(&relative, sizeof(relative));
+        break;
+      }
+
+      case HID_REPORT_ID_MOUSE_ABSOLUTE:
+      {
+        const HIDMouseAbsoluteReport absolute = {
+          HID_REPORT_ID_MOUSE_ABSOLUTE,
+          0,
+          absoluteX,
+          absoluteY,
+          0,
+        };
+        status = SubmitReport(&absolute, sizeof(absolute));
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
+  const NTSTATUS keyboardStatus =
+    SubmitReport(&keyboard, sizeof(keyboard));
+  if (NT_SUCCESS(status))
+    status = keyboardStatus;
+  const NTSTATUS consumerStatus =
+    SubmitReport(&consumer, sizeof(consumer));
+  if (NT_SUCCESS(status))
+    status = consumerStatus;
+  return status;
+}
+
+void CHIDDevice::LogStatistics()
+{
+  HIDStatistics statistics = {};
+  {
+    CSRWSharedLock deviceLock(s_deviceLock);
+    HIDDeviceContext * context = s_device;
+    if (!context)
+      return;
+
+    CSRWExclusiveLock reportLock(context->reportLock);
+    statistics = context->statistics;
+    context->statistics = {};
+    context->statistics.queueHighWater = context->reportCount;
+  }
+
+  if (!(statistics.direct || statistics.queued ||
+      statistics.relativeCoalesced || statistics.absoluteCoalesced ||
+      statistics.staleAbsoluteCompacted ||
+      statistics.keyboardDuplicates || statistics.consumerDuplicates ||
+      statistics.overflows || statistics.resetDiscarded))
+    return;
+
+  if (!CSettings::ShouldLogStatistics())
+    return;
+
+  DEBUG_TRACE("HID reports: %llu direct, %llu queued, peak %zu; "
+    "%llu relative and %llu absolute coalesced, %llu stale absolute "
+    "compacted, %llu keyboard and %llu consumer duplicates, "
+    "%llu overflows, %llu discarded on reset",
+    static_cast<unsigned long long>(statistics.direct),
+    static_cast<unsigned long long>(statistics.queued),
+    statistics.queueHighWater,
+    static_cast<unsigned long long>(statistics.relativeCoalesced),
+    static_cast<unsigned long long>(statistics.absoluteCoalesced),
+    static_cast<unsigned long long>(statistics.staleAbsoluteCompacted),
+    static_cast<unsigned long long>(statistics.keyboardDuplicates),
+    static_cast<unsigned long long>(statistics.consumerDuplicates),
+    static_cast<unsigned long long>(statistics.overflows),
+    static_cast<unsigned long long>(statistics.resetDiscarded));
+}
+
+VOID HIDEvtIoDeviceControl(
+  _In_ WDFQUEUE queue,
+  _In_ WDFREQUEST request,
+  _In_ size_t outputBufferLength,
+  _In_ size_t inputBufferLength,
+  _In_ ULONG ioControlCode)
+{
+  UNREFERENCED_PARAMETER(outputBufferLength);
+  UNREFERENCED_PARAMETER(inputBufferLength);
+
+  HIDDeviceContext * context =
+    HIDGetDeviceContext(WdfIoQueueGetDevice(queue));
+  NTSTATUS status;
+  bool     complete = true;
+
+  switch (ioControlCode)
+  {
+    case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
+      status = CopyToRequest(
+        request, &context->descriptor, context->descriptor.bLength);
+      break;
+
+    case IOCTL_HID_GET_DEVICE_ATTRIBUTES:
+      status = CopyToRequest(
+        request, &context->attributes, sizeof(context->attributes));
+      break;
+
+    case IOCTL_HID_GET_REPORT_DESCRIPTOR:
+      status = CopyToRequest(
+        request, HIDGetReportDescriptor(), HIDGetReportDescriptorSize());
+      break;
+
+    case IOCTL_HID_READ_REPORT:
+      status = ReadReport(context, request, &complete);
+      break;
+
+    case IOCTL_HID_WRITE_REPORT:
+    case IOCTL_UMDF_HID_SET_OUTPUT_REPORT:
+      status = SetOutputReport(queue, request);
+      break;
+
+    case IOCTL_HID_ACTIVATE_DEVICE:
+      status = ActivateDevice(context);
+      break;
+
+    case IOCTL_HID_DEACTIVATE_DEVICE:
+      status = DeactivateDevice(context, request, &complete);
+      break;
+
+    default:
+      status = STATUS_NOT_SUPPORTED;
+      break;
+  }
+
+  if (complete)
+    WdfRequestComplete(request, status);
+}
+
+VOID HIDEvtReportQueuePurged(
+  _In_ WDFQUEUE queue,
+  _In_ WDFCONTEXT callbackContext)
+{
+  UNREFERENCED_PARAMETER(queue);
+
+  HIDDeviceContext * context =
+    static_cast<HIDDeviceContext *>(callbackContext);
+  WDFREQUEST request = nullptr;
+  {
+    CSRWExclusiveLock lifecycleLock(context->lifecycleLock);
+    request = context->deactivateRequest;
+    context->deactivateRequest = nullptr;
+  }
+
+  if (request)
+    WdfRequestComplete(request, STATUS_SUCCESS);
+}
+
+VOID HIDEvtReportQueueCleanup(_In_ WDFOBJECT object)
+{
+  HIDDeviceContext * context =
+    HIDGetDeviceContext(WdfIoQueueGetDevice((WDFQUEUE)object));
+
+  {
+    CSRWExclusiveLock deviceLock(s_deviceLock);
+    if (s_device == context)
+      s_device = nullptr;
+  }
+
+  WDFREQUEST deactivateRequest = nullptr;
+  {
+    CSRWExclusiveLock lifecycleLock(context->lifecycleLock);
+    {
+      CSRWExclusiveLock reportLock(context->reportLock);
+      context->stopping    = true;
+      context->reportHead  = 0;
+      context->reportCount = 0;
+    }
+    deactivateRequest = context->deactivateRequest;
+    context->deactivateRequest = nullptr;
+  }
+
+  if (deactivateRequest)
+    WdfRequestComplete(deactivateRequest, STATUS_DEVICE_REMOVED);
+}
+
+VOID HIDEvtDeviceCleanup(_In_ WDFOBJECT object)
+{
+  HIDDeviceContext * context = HIDGetDeviceContext((WDFDEVICE)object);
+  if (context->inputPipe)
+  {
+    context->inputPipe->Stop();
+    delete context->inputPipe;
+    context->inputPipe = nullptr;
+  }
+
+  CSRWExclusiveLock deviceLock(s_deviceLock);
+  if (s_device == context)
+    s_device = nullptr;
+}
+
+NTSTATUS HIDEvtSelfManagedIoInit(_In_ WDFDEVICE device)
+{
+  HIDDeviceContext * context = HIDGetDeviceContext(device);
+  if (!context->inputPipe || !context->inputPipe->Start())
+  {
+    DEBUG_ERROR("Failed to start the LGIdd input pipe client");
+    return STATUS_INSUFFICIENT_RESOURCES;
+  }
+  return STATUS_SUCCESS;
+}
+
+VOID HIDEvtSelfManagedIoCleanup(_In_ WDFDEVICE device)
+{
+  HIDDeviceContext * context = HIDGetDeviceContext(device);
+  if (context->inputPipe)
+    context->inputPipe->Stop();
+}
+
+VOID HIDEvtSelfManagedIoFlush(_In_ WDFDEVICE device)
+{
+  HIDDeviceContext * context = HIDGetDeviceContext(device);
+  if (context->inputPipe)
+    context->inputPipe->Stop();
+}
+
+NTSTATUS HIDEvtSelfManagedIoSuspend(_In_ WDFDEVICE device)
+{
+  HIDDeviceContext * context = HIDGetDeviceContext(device);
+  if (context->inputPipe)
+    context->inputPipe->Stop();
+  return STATUS_SUCCESS;
+}
+
+NTSTATUS HIDEvtSelfManagedIoRestart(_In_ WDFDEVICE device)
+{
+  HIDDeviceContext * context = HIDGetDeviceContext(device);
+  if (!context->inputPipe || !context->inputPipe->Start())
+  {
+    DEBUG_ERROR("Failed to restart the LGIdd input pipe client");
+    return STATUS_INSUFFICIENT_RESOURCES;
+  }
+  return STATUS_SUCCESS;
+}

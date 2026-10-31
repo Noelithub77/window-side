@@ -16,6 +16,29 @@ pnpm -C ui install --frozen-lockfile
 ./ops gui:smoke --output /tmp/window-side-tauri-check
 ```
 
+The customized Looking Glass source and bundled dependencies live in
+`third_party/looking-glass`; regular clones need no submodules or source download.
+Install its C/C++ build dependencies using the pinned
+[upstream build guide](../third_party/looking-glass/doc/build.rst); this version
+also requires FUSE 3 development headers (`fuse3` on Arch, `libfuse3-dev` on
+Debian/Ubuntu, `fuse3-devel` on Fedora). `scripts/system-deps.sh --build` covers
+the Tauri app requirements. Looking Glass retains its native CMake build.
+
+`./ops build`, `dev` and `release:build` build the viewer into
+`target/libexec/window-side/window-side-viewer`. The installer puts it under
+`PREFIX/libexec/window-side/`; the app resolves that absolute path from its own
+installation prefix and passes the overlay/capture options. It never falls back
+to `looking-glass-client` on PATH. Launch errors include the service exit code
+and stderr. Reopen the app after installing an update.
+Client builds disable native CPU tuning so a release is not tied to the build
+machine's processor.
+
+`./ops looking-glass:test`, included in both full checks, runs the client input
+regressions without a guest or display. Release archives include the viewer and
+the complete corresponding vendored source with upstream/dependency licenses.
+The Arch package builds the same source and declares its client dependencies.
+Other distro builds and physical Windows input need their own verification.
+
 `./ops ui:dev` runs Vite on 5199. To open the development webview explicitly,
 run `./ops ui:dev --window` inside OmaBox with the Vite server reachable at
 5199. Ordinary `./ops dev` builds the embedded UI and opens the app; agents

@@ -1,0 +1,51 @@
+/**
+ * LGMP - Looking Glass Memory Protocol
+ * Copyright © 2020-2026 Geoffrey McRae <geoff@hostfission.com>
+ * https://github.com/gnif/LGMP
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#ifndef LGMP_LGMP_H
+#define LGMP_LGMP_H
+
+#define LGMP_PROTOCOL_VERSION 12
+
+// this MUST match the size defined in `src/headers.h`
+#define LGMP_MSGS_SIZE 64
+
+#define LGMP_MAX_QUEUES  6
+#define LGMP_MAX_CLIENTS 8
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct LGMPHost         * PLGMPHost;
+typedef struct LGMPClient       * PLGMPClient;
+typedef struct LGMPHostQueue    * PLGMPHostQueue;
+typedef struct LGMPClientQueue  * PLGMPClientQueue;
+typedef struct LGMPMemory       * PLGMPMemory;
+typedef struct LGMPHostStream   * PLGMPHostStream;
+typedef struct LGMPClientStream * PLGMPClientStream;
+typedef struct LGMPHostSPMC     * PLGMPHostSPMC;
+typedef struct LGMPClientSPMC   * PLGMPClientSPMC;
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

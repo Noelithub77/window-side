@@ -1,0 +1,54 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#ifndef _LG_COMMON_RECTS_H_
+#define _LG_COMMON_RECTS_H_
+
+#include <stdint.h>
+#include <string.h>
+
+#include "common/framebuffer.h"
+#include "common/types.h"
+
+extern void (*rectCopyUnaligned)(
+    uint8_t *restrict dst, const uint8_t *restrict src,
+    int ystart, int yend, int dx, int dstPitch, int srcPitch, int width);
+
+void rectScaleOutward(struct Rect * rect, double scale);
+
+bool rectsBufferToFramebuffer(const KVMFRFrameDamageRect * rects, int count,
+  int bpp, KVMFRFrameBuffer * frame, int dstPitch, int height,
+  const uint8_t * src, int srcPitch);
+
+bool rectsFramebufferToBuffer(const KVMFRFrameDamageRect * rects, int count,
+  int bpp,
+  uint8_t * dst, int dstPitch, int height,
+  const KVMFRFrameBuffer * frame, int srcPitch);
+
+/* As above, accumulating producer wait time in nanoseconds. */
+bool rectsFramebufferToBufferTimed(const KVMFRFrameDamageRect * rects,
+  int count, int bpp,
+  uint8_t * dst, int dstPitch, int height,
+  const KVMFRFrameBuffer * frame, int srcPitch, uint64_t * waitTimeNs);
+
+int rectsMergeOverlapping(KVMFRFrameDamageRect * rects, int count);
+int rectsRejectContained(KVMFRFrameDamageRect * rects, int count);
+
+#endif

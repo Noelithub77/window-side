@@ -1,0 +1,433 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\packages\MSBuilder.Git.0.3.0\build\MSBuilder.Git.props" Condition="Exists('..\packages\MSBuilder.Git.0.3.0\build\MSBuilder.Git.props')" />
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug-LGInput|x64">
+      <Configuration>Debug-LGInput</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release-LGInput|x64">
+      <Configuration>Release-LGInput</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cpp.hint" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Device.cpp" />
+    <ClCompile Include="Driver.cpp" />
+    <ClCompile Include="ipc\CInputPipeServer.cpp" />
+    <ClCompile Include="ipc\CPipeServer.cpp" />
+    <ClCompile Include="display\CDisplayConfiguration.cpp" />
+    <ClCompile Include="display\CEdid.cpp" />
+    <ClCompile Include="display\CMonitorManager.cpp" />
+    <ClCompile Include="display\CDeviceContext.cpp" />
+    <ClCompile Include="display\CMonitorContext.cpp" />
+    <ClCompile Include="capture\CFrameBufferPool.cpp" />
+    <ClCompile Include="capture\CFrameBufferResource.cpp" />
+    <ClCompile Include="capture\CFrameExec.cpp" />
+    <ClCompile Include="capture\CFrameGraph.cpp" />
+    <ClCompile Include="capture\CFrameTex.cpp" />
+    <ClCompile Include="capture\CFrameProcessor.cpp" />
+    <ClCompile Include="capture\CFrameProcessorUtil.cpp" />
+    <ClCompile Include="capture\CFrameScheduler.cpp" />
+    <ClCompile Include="capture\CHardwareFrameProcessor.cpp" />
+    <ClCompile Include="capture\CSoftwareFrameProcessor.cpp" />
+    <ClCompile Include="capture\CSwapChainProcessor.cpp" />
+    <ClCompile Include="d3d\CInteropPool.cpp" />
+    <ClCompile Include="d3d\CD3D11Device.cpp" />
+    <ClCompile Include="d3d\CD3D12CommandQueue.cpp" />
+    <ClCompile Include="d3d\CD3D12Device.cpp" />
+    <ClCompile Include="d3d\CInteropResource.cpp" />
+    <ClCompile Include="d3d\CInteropResourcePool.cpp" />
+    <ClCompile Include="postprocess\CPostProcessor.cpp" />
+    <ClCompile Include="postprocess\D12FrameFormat.cpp" />
+    <ClCompile Include="postprocess\effect\CColorTransformEffect.cpp" />
+    <ClCompile Include="postprocess\effect\CComputeEffect.cpp" />
+    <ClCompile Include="postprocess\effect\CDownsampleEffect.cpp" />
+    <ClCompile Include="postprocess\effect\CFormatEffect.cpp" />
+    <ClCompile Include="postprocess\effect\CHDR16to10Effect.cpp" />
+    <ClCompile Include="postprocess\effect\CRGB24Effect.cpp" />
+    <ClCompile Include="transport\CClipboardHub.cpp" />
+    <ClCompile Include="transport\CControlHub.cpp" />
+    <ClCompile Include="transport\CFrameHub.cpp" />
+    <ClCompile Include="transport\CInputHub.cpp" />
+    <ClCompile Include="transport\CRecoveryHub.cpp" />
+    <ClCompile Include="transport\CTexHub.cpp" />
+    <ClCompile Include="transport\CTransportManager.cpp" />
+    <ClCompile Include="transport\TransportConfig.cpp" />
+    <ClCompile Include="transport\TransportFactory.cpp" />
+    <ClCompile Include="transport\lgmp\CIVSHMEM.cpp" />
+    <ClCompile Include="transport\lgmp\CRecovery.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPClipboardTransport.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPClipboardFiles.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPControl.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPFrameCaps.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPFrameTransport.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPHost.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPInputTransport.cpp" />
+    <ClCompile Include="transport\lgmp\CLGMPTransport.cpp" />
+    <ClCompile Include="config\CSettings.cpp" />
+    <ClCompile Include="platform\CPlatformInfo.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Device.h" />
+    <ClInclude Include="Driver.h" />
+    <ClInclude Include="Trace.h" />
+    <ClInclude Include="input\IInputSink.h" />
+    <ClInclude Include="ipc\CInputPipeServer.h" />
+    <ClInclude Include="ipc\CPipeServer.h" />
+    <ClInclude Include="display\CDisplayConfiguration.h" />
+    <ClInclude Include="display\CEdid.h" />
+    <ClInclude Include="display\CMonitorManager.h" />
+    <ClInclude Include="display\IddCxCompat.h" />
+    <ClInclude Include="display\CDeviceContext.h" />
+    <ClInclude Include="display\CMonitorContext.h" />
+    <ClInclude Include="capture\CFrameBufferPool.h" />
+    <ClInclude Include="capture\CFrameBufferResource.h" />
+    <ClInclude Include="capture\CFrameExec.h" />
+    <ClInclude Include="capture\CFrameGraph.h" />
+    <ClInclude Include="capture\CFrameTex.h" />
+    <ClInclude Include="capture\CFrameProcessor.h" />
+    <ClInclude Include="capture\CFrameProcessorUtil.h" />
+    <ClInclude Include="capture\CFrameScheduler.h" />
+    <ClInclude Include="capture\FramePipeline.h" />
+    <ClInclude Include="capture\CHardwareFrameProcessor.h" />
+    <ClInclude Include="capture\CSoftwareFrameProcessor.h" />
+    <ClInclude Include="capture\CSwapChainProcessor.h" />
+    <ClInclude Include="d3d\CInteropPool.h" />
+    <ClInclude Include="d3d\CD3D11Device.h" />
+    <ClInclude Include="d3d\CD3D12CommandQueue.h" />
+    <ClInclude Include="d3d\CD3D12Device.h" />
+    <ClInclude Include="d3d\CInteropResource.h" />
+    <ClInclude Include="d3d\CInteropResourcePool.h" />
+    <ClInclude Include="postprocess\CPostProcessor.h" />
+    <ClInclude Include="postprocess\D12FrameFormat.h" />
+    <ClInclude Include="postprocess\effect\CColorTransformEffect.h" />
+    <ClInclude Include="postprocess\effect\CComputeEffect.h" />
+    <ClInclude Include="postprocess\effect\CDownsampleEffect.h" />
+    <ClInclude Include="postprocess\effect\CFormatEffect.h" />
+    <ClInclude Include="postprocess\effect\CHDR16to10Effect.h" />
+    <ClInclude Include="postprocess\effect\CRGB24Effect.h" />
+    <ClInclude Include="transport\CClipboardHub.h" />
+    <ClInclude Include="transport\CControlHub.h" />
+    <ClInclude Include="transport\CFrameHub.h" />
+    <ClInclude Include="transport\CInputHub.h" />
+    <ClInclude Include="transport\CRecoveryHub.h" />
+    <ClInclude Include="transport\CTexHub.h" />
+    <ClInclude Include="transport\CTransportManager.h" />
+    <ClInclude Include="transport\DirectFrameBufferMemory.h" />
+    <ClInclude Include="transport\FrameCaps.h" />
+    <ClInclude Include="transport\FrameProfile.h" />
+    <ClInclude Include="transport\FrameIn.h" />
+    <ClInclude Include="transport\IClipboardSource.h" />
+    <ClInclude Include="transport\IControlSink.h" />
+    <ClInclude Include="transport\IControlTransport.h" />
+    <ClInclude Include="transport\IFrameSink.h" />
+    <ClInclude Include="transport\IFrameTransport.h" />
+    <ClInclude Include="transport\IInputTransport.h" />
+    <ClInclude Include="transport\IInputSource.h" />
+    <ClInclude Include="transport\ITransport.h" />
+    <ClInclude Include="transport\ITexSink.h" />
+    <ClInclude Include="transport\ITexStage.h" />
+    <ClInclude Include="transport\TransportConfig.h" />
+    <ClInclude Include="transport\PreparedFrameBuffer.h" />
+    <ClInclude Include="transport\TransportFactory.h" />
+    <ClInclude Include="transport\lgmp\CIVSHMEM.h" />
+    <ClInclude Include="transport\lgmp\CRecovery.h" />
+    <ClInclude Include="transport\lgmp\CLGMPClipboardTransport.h" />
+    <ClInclude Include="transport\lgmp\CLGMPClipboardFiles.h" />
+    <ClInclude Include="transport\lgmp\CLGMPControl.h" />
+    <ClInclude Include="transport\lgmp\CLGMPFrameCaps.h" />
+    <ClInclude Include="transport\lgmp\CLGMPFrameTransport.h" />
+    <ClInclude Include="transport\lgmp\CLGMPHost.h" />
+    <ClInclude Include="transport\lgmp\CLGMPInputTransport.h" />
+    <ClInclude Include="transport\lgmp\CLGMPTransport.h" />
+    <ClInclude Include="config\CSettings.h" />
+    <ClInclude Include="platform\CPlatformInfo.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Inf Include="LGIdd.inf" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{1CBF3DAA-0726-4F5F-88A2-04D95FB6591A}</ProjectGuid>
+    <TemplateGuid>{32909489-7be5-497b-aafa-db6669d9b44b}</TemplateGuid>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
+    <Configuration>Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">Win32</Platform>
+    <LGBaseConfiguration Condition="'$(Configuration)'=='Debug-LGInput'">Debug</LGBaseConfiguration>
+    <LGBaseConfiguration Condition="'$(Configuration)'=='Release-LGInput'">Release</LGBaseConfiguration>
+    <LGBaseConfiguration Condition="'$(LGBaseConfiguration)'==''">$(Configuration)</LGBaseConfiguration>
+    <LGInputDeployPackage Condition="'$(Configuration)'=='Debug-LGInput' or '$(Configuration)'=='Release-LGInput'">true</LGInputDeployPackage>
+    <RootNamespace>LGIdd</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <LGDriverSolutionDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)\..'))</LGDriverSolutionDir>
+    <SolutionDir Condition="'$(SolutionDir)'==''">$(LGDriverSolutionDir)</SolutionDir>
+  </PropertyGroup>
+  <PropertyGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <PlatformToolset>WindowsUserModeDriver10.0</PlatformToolset>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+  <PropertyGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <PlatformToolset>WindowsUserModeDriver10.0</PlatformToolset>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+  <PropertyGroup Label="PropertySheets" Condition="'$(LGBaseConfiguration)|$(Platform)'=='Debug|x64'">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+  <PropertyGroup Label="PropertySheets" Condition="'$(LGBaseConfiguration)|$(Platform)'=='Release|x64'">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR>
+    <Driver_SpectreMitigation>Spectre</Driver_SpectreMitigation>
+    <IndirectDisplayDriver>true</IndirectDisplayDriver>
+    <IDDCX_VERSION_MAJOR>1</IDDCX_VERSION_MAJOR>
+    <IDDCX_VERSION_MINOR>10</IDDCX_VERSION_MINOR>
+    <UMDF_VERSION_MINOR>25</UMDF_VERSION_MINOR>
+    <UMDF_MINIMUM_VERSION_REQUIRED>25</UMDF_MINIMUM_VERSION_REQUIRED>
+    <_NT_TARGET_VERSION>0xA000005</_NT_TARGET_VERSION>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR>
+    <Driver_SpectreMitigation>Spectre</Driver_SpectreMitigation>
+    <IndirectDisplayDriver>true</IndirectDisplayDriver>
+    <IDDCX_VERSION_MAJOR>1</IDDCX_VERSION_MAJOR>
+    <IDDCX_VERSION_MINOR>10</IDDCX_VERSION_MINOR>
+    <UMDF_VERSION_MINOR>25</UMDF_VERSION_MINOR>
+    <UMDF_MINIMUM_VERSION_REQUIRED>25</UMDF_MINIMUM_VERSION_REQUIRED>
+    <_NT_TARGET_VERSION>0xA000005</_NT_TARGET_VERSION>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(LGBaseConfiguration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR>
+    <IndirectDisplayDriver>true</IndirectDisplayDriver>
+    <IDDCX_VERSION_MAJOR>1</IDDCX_VERSION_MAJOR>
+    <IDDCX_VERSION_MINOR>10</IDDCX_VERSION_MINOR>
+    <Driver_SpectreMitigation>Spectre</Driver_SpectreMitigation>
+    <UMDF_VERSION_MINOR>25</UMDF_VERSION_MINOR>
+    <UMDF_MINIMUM_VERSION_REQUIRED>25</UMDF_MINIMUM_VERSION_REQUIRED>
+    <_NT_TARGET_VERSION>0xA000005</_NT_TARGET_VERSION>
+    <PlatformToolset>WindowsUserModeDriver10.0</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(LGBaseConfiguration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR>
+    <IndirectDisplayDriver>true</IndirectDisplayDriver>
+    <IDDCX_VERSION_MAJOR>1</IDDCX_VERSION_MAJOR>
+    <IDDCX_VERSION_MINOR>10</IDDCX_VERSION_MINOR>
+    <Driver_SpectreMitigation>Spectre</Driver_SpectreMitigation>
+    <UMDF_VERSION_MINOR>25</UMDF_VERSION_MINOR>
+    <UMDF_MINIMUM_VERSION_REQUIRED>25</UMDF_MINIMUM_VERSION_REQUIRED>
+    <_NT_TARGET_VERSION>0xA000005</_NT_TARGET_VERSION>
+    <PlatformToolset>WindowsUserModeDriver10.0</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <DebuggerFlavor>DbgengRemoteDebugger</DebuggerFlavor>
+    <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <DebuggerFlavor>DbgengRemoteDebugger</DebuggerFlavor>
+    <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(LGBaseConfiguration)|$(Platform)'=='Debug|x64'">
+    <DebuggerFlavor>DbgengRemoteDebugger</DebuggerFlavor>
+    <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(LGBaseConfiguration)|$(Platform)'=='Release|x64'">
+    <DebuggerFlavor>DbgengRemoteDebugger</DebuggerFlavor>
+    <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LGPackageToolOutDir Condition="'$(Platform)'=='x64'">$([MSBuild]::NormalizeDirectory('$(LGDriverSolutionDir)$(Platform)\$(LGBaseConfiguration)'))</LGPackageToolOutDir>
+    <LGPackageToolOutDir Condition="'$(Platform)'=='Win32'">$([MSBuild]::NormalizeDirectory('$(LGDriverSolutionDir)$(LGBaseConfiguration)'))</LGPackageToolOutDir>
+    <InfVerif_AdditionalOptions>/sw2084</InfVerif_AdditionalOptions>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>UMDF_USING_NTSTATUS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WppEnabled>true</WppEnabled>
+      <WppRecorderEnabled>true</WppRecorderEnabled>
+      <WppScanConfigurationData Condition="'%(ClCompile.ScanConfigurationData)' == ''">trace.h</WppScanConfigurationData>
+      <AdditionalOptions>/EHsc /D_ATL_NO_WIN_SUPPORT /DIDDCX_VERSION_MAJOR=1 /DIDDCX_VERSION_MINOR=10 /DIDDCX_MINIMUM_VERSION_REQUIRED=4 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)LGCommon;$(ProjectDir)..\..\repos\LGMP\lgmp\include;$(ProjectDir)..\..\vendor;$(ProjectDir)..\..\repos\LGProtocol\include;$(ProjectDir)..\..\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);OneCoreUAP.lib;avrt.lib;bcrypt.lib;d3d12.lib;d3dcompiler.lib</AdditionalDependencies>
+    </Link>
+    <DriverSign>
+      <FileDigestAlgorithm>SHA1</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WppEnabled>true</WppEnabled>
+      <WppRecorderEnabled>true</WppRecorderEnabled>
+      <WppScanConfigurationData Condition="'%(ClCompile.ScanConfigurationData)' == ''">trace.h</WppScanConfigurationData>
+      <AdditionalOptions>/EHsc /D_ATL_NO_WIN_SUPPORT /DIDDCX_VERSION_MAJOR=1 /DIDDCX_VERSION_MINOR=10 /DIDDCX_MINIMUM_VERSION_REQUIRED=4 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)LGCommon;$(ProjectDir)..\..\repos\LGMP\lgmp\include;$(ProjectDir)..\..\vendor;$(ProjectDir)..\..\repos\LGProtocol\include;$(ProjectDir)..\..\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);OneCoreUAP.lib;avrt.lib;bcrypt.lib;d3d12.lib;d3dcompiler.lib</AdditionalDependencies>
+    </Link>
+    <DriverSign>
+      <FileDigestAlgorithm>SHA1</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(LGBaseConfiguration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WppEnabled>true</WppEnabled>
+      <WppRecorderEnabled>true</WppRecorderEnabled>
+      <WppScanConfigurationData Condition="'%(ClCompile.ScanConfigurationData)' == ''">trace.h</WppScanConfigurationData>
+      <AdditionalOptions>/EHsc /D_ATL_NO_WIN_SUPPORT /DIDDCX_VERSION_MAJOR=1 /DIDDCX_VERSION_MINOR=10 /DIDDCX_MINIMUM_VERSION_REQUIRED=4 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)LGCommon;$(ProjectDir)..\..\repos\LGMP\lgmp\include;$(ProjectDir)..\..\vendor;$(ProjectDir)..\..\repos\LGProtocol\include;$(ProjectDir)..\..\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);OneCoreUAP.lib;avrt.lib;bcrypt.lib;d3d12.lib;d3dcompiler.lib</AdditionalDependencies>
+    </Link>
+    <DriverSign>
+      <FileDigestAlgorithm>SHA1</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(LGBaseConfiguration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WppEnabled>true</WppEnabled>
+      <WppRecorderEnabled>true</WppRecorderEnabled>
+      <WppScanConfigurationData Condition="'%(ClCompile.ScanConfigurationData)' == ''">trace.h</WppScanConfigurationData>
+      <AdditionalOptions>/EHsc /D_ATL_NO_WIN_SUPPORT /DIDDCX_VERSION_MAJOR=1 /DIDDCX_VERSION_MINOR=10 /DIDDCX_MINIMUM_VERSION_REQUIRED=4 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)LGCommon;$(ProjectDir)..\..\repos\LGMP\lgmp\include;$(ProjectDir)..\..\vendor;$(ProjectDir)..\..\repos\LGProtocol\include;$(ProjectDir)..\..\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);OneCoreUAP.lib;avrt.lib;bcrypt.lib;d3d12.lib;d3dcompiler.lib</AdditionalDependencies>
+    </Link>
+    <DriverSign>
+      <FileDigestAlgorithm>SHA1</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <FilesToPackage Include="$(TargetPath)" />
+    <FilesToPackage Include="$(LGPackageToolOutDir)LGIddHelper.exe" />
+    <FilesToPackage Include="$(LGPackageToolOutDir)LGIddInstall.exe" />
+    <FilesToPackage Include="$(ProjectDir)..\installer.nsi" />
+    <FilesToPackage Include="$(ProjectDir)..\..\resources\icon.ico" />
+    <FilesToPackage Include="$(ProjectDir)..\..\LICENSE" />
+    <FilesToPackage Include="$(ProjectDir)..\LGIddHelper\VERSION" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LGCommon\LGCommon.vcxproj">
+      <Project>{acb90e34-01ca-4b86-813b-3d20904994c6}</Project>
+      <SetConfiguration Condition="'$(CurrentSolutionConfigurationContents)'==''">Configuration=$(LGBaseConfiguration)</SetConfiguration>
+      <SetPlatform Condition="'$(CurrentSolutionConfigurationContents)'==''">Platform=$(Platform)</SetPlatform>
+      <AdditionalProperties Condition="'$(CurrentSolutionConfigurationContents)'==''">SolutionDir=$(LGDriverSolutionDir)</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\LGInput\LGInput.vcxproj">
+      <Project>{2477b25b-cb62-4ad9-a260-ce5f00d77eeb}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <PackageRelativeDirectory>LGInput</PackageRelativeDirectory>
+      <AdditionalProperties Condition="'$(CurrentSolutionConfigurationContents)'==''">Configuration=$(LGBaseConfiguration);Platform=$(Platform);SolutionDir=$(LGDriverSolutionDir)</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\..\repos\LGMP\LGMP.vcxproj">
+      <Project>{ffcc376c-4d98-4b50-b431-e1bbc9c67e65}</Project>
+      <AdditionalProperties Condition="'$(CurrentSolutionConfigurationContents)'==''">Configuration=$(LGBaseConfiguration);Platform=$(Platform);SolutionDir=$(LGDriverSolutionDir)</AdditionalProperties>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <PropertyGroup>
+    <RemoveDriver>false</RemoveDriver>
+    <InstallMode>CustomCommand</InstallMode>
+    <CommandLine Condition="'$(LGInputDeployPackage)'!='true'">%ComSpec% /d /s /c LGIddInstall.exe install LGIdd LGInput</CommandLine>
+    <CommandLine Condition="'$(LGInputDeployPackage)'=='true'">%ComSpec% /d /s /c LGIddInstall.exe install LGInput LGIdd</CommandLine>
+    <DeployFiles>$(PackageDir)LGIddInstall.exe</DeployFiles>
+  </PropertyGroup>
+  <Target Name="BuildLGIddPackageTools"
+    BeforeTargets="DriverPackageTarget"
+    Condition="'$(CurrentSolutionConfigurationContents)'==''">
+    <MSBuild
+      Projects="$(ProjectDir)..\LGIddHelper\LGIddHelper.vcxproj;$(ProjectDir)..\LGIddInstall\LGIddInstall.vcxproj"
+      Targets="Build"
+      BuildInParallel="false"
+      StopOnFirstFailure="true"
+      Properties="Configuration=$(LGBaseConfiguration);Platform=$(Platform);SolutionDir=$(LGDriverSolutionDir)" />
+  </Target>
+  <Target Name="CleanDriverPackageDirectory" BeforeTargets="DriverPackageTarget">
+    <RemoveDir Directories="$(PackageDir)" />
+  </Target>
+  <PropertyGroup>
+    <LGPeerPackageStageAfterTargets Condition="'$(SignMode)'=='TestSign'">PackageTestSign</LGPeerPackageStageAfterTargets>
+    <LGPeerPackageStageAfterTargets Condition="'$(SignMode)'=='ProductionSign'">PackageProductionSign</LGPeerPackageStageAfterTargets>
+    <LGPeerPackageStageAfterTargets Condition="'$(LGPeerPackageStageAfterTargets)'==''">Inf2Cat</LGPeerPackageStageAfterTargets>
+  </PropertyGroup>
+  <Target Name="StageLGInputDeployPackage" AfterTargets="$(LGPeerPackageStageAfterTargets)">
+    <Error
+      Condition="!Exists('$(PackageDir)LGInput\LGInput.inf') or !Exists('$(PackageDir)LGInput\LGInput.dll') or !Exists('$(PackageDir)LGInput\LGInput.cat')"
+      Text="The deployment package is missing one or more signed LGInput files." />
+    <Copy SourceFiles="$(PackageDir)LGInput\LGInput.inf;$(PackageDir)LGInput\LGInput.dll;$(PackageDir)LGInput\LGInput.cat" DestinationFolder="$(PackageDir)" />
+  </Target>
+  <ImportGroup Label="ExtensionTargets" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\MSBuilder.Git.0.3.0\build\MSBuilder.Git.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\MSBuilder.Git.0.3.0\build\MSBuilder.Git.props'))" />
+  </Target>
+  <Target Name="GenerateVersionInfo" BeforeTargets="ClCompile">
+    <Exec Command="&quot;$(Git)&quot; describe --always --abbrev=10 --dirty=+ --tags" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitVersion" />
+    </Exec>
+    <ItemGroup>
+      <VersionInfoLines Include="#define LG_VERSION_STR &quot;$(GitVersion)&quot;" />
+      <VersionInfoLines Include="#define LG_CURRENT_YEAR $(CurrentYear)" />
+    </ItemGroup>
+    <WriteLinesToFile File="VersionInfo.h" Lines="@(VersionInfoLines)" Overwrite="true" />
+  </Target>
+  <Target Name="Build" DependsOnTargets="$(BuildDependsOn)" />
+  <PropertyGroup>
+    <CurrentYear>$([System.DateTime]::Now.ToString("yyyy"))</CurrentYear>
+    <BuildDependsOn>
+      GenerateVersionInfo;
+      $(BuildDependsOn);
+    </BuildDependsOn>
+  </PropertyGroup>
+</Project>

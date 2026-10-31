@@ -1,0 +1,2356 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#include "interface/displayserver.h"
+
+#include "x11.h"
+#include "atoms.h"
+#include "clipboard.h"
+#include "cursor.h"
+
+#include "resources/icondata.h"
+#include "resources/no-input-cursor/16.xcur.h"
+#include "resources/no-input-cursor/32.xcur.h"
+
+#include <string.h>
+#include <unistd.h>
+#include <sys/epoll.h>
+#include <errno.h>
+
+#include <X11/extensions/XInput2.h>
+#include <X11/extensions/scrnsaver.h>
+#include <X11/extensions/Xinerama.h>
+#include <X11/extensions/Xpresent.h>
+#include <X11/extensions/Xrandr.h>
+#include <X11/Xcursor/Xcursor.h>
+#include <X11/XKBlib.h>
+
+#include <xkbcommon/xkbcommon.h>
+
+#include <GL/glx.h>
+#include <GL/glxext.h>
+
+#ifdef ENABLE_EGL
+#include <EGL/eglext.h>
+#include "egl_dynprocs.h"
+#include "eglutil.h"
+#endif
+
+#include "app.h"
+#include "common/array.h"
+#include "common/debug.h"
+#include "common/time.h"
+#include "common/event.h"
+#include "util.h"
+
+struct X11DSState x11;
+
+struct MwmHints
+{
+  unsigned long flags;
+  unsigned long functions;
+  unsigned long decorations;
+  long          input_mode;
+  unsigned long status;
+};
+
+enum {
+  MWM_HINTS_FUNCTIONS   = (1L << 0),
+  MWM_HINTS_DECORATIONS = (1L << 1),
+
+  MWM_FUNC_ALL          = (1L << 0),
+  MWM_FUNC_RESIZE       = (1L << 1),
+  MWM_FUNC_MOVE         = (1L << 2),
+  MWM_FUNC_MINIMIZE     = (1L << 3),
+  MWM_FUNC_MAXIMIZE     = (1L << 4),
+  MWM_FUNC_CLOSE        = (1L << 5)
+};
+
+static const unsigned long icondata[] = {
+  LG_ICON_WIDTH, LG_ICON_HEIGHT, LG_ICON_PIXELS,
+};
+
+// forwards
+static void x11SetFullscreen(bool fs);
+static int  x11EventThread(void * unused);
+static void x11XInputEvent(XGenericEventCookie *cookie);
+static void x11XPresentEvent(XGenericEventCookie *cookie);
+static void x11UpdateKeyboardGroup(void);
+static int  x11GetIndicatorIndex(const char * name);
+static void emitKeyboardState(unsigned int indicators);
+static void updateKeyboardState(void);
+static void setFocus(bool focused);
+static void x11GrabPointer(void);
+
+static void inputPosition(void * opaque, double x, double y)
+{
+  (void)opaque;
+  app_updateCursorPos(x, y);
+}
+
+static void inputRelative(void * opaque, double x, double y,
+    double rawX, double rawY)
+{
+  (void)opaque;
+  app_handleMouseRelative(x, y, rawX, rawY);
+}
+
+static void inputButton(void * opaque, unsigned int button, bool pressed)
+{
+  (void)opaque;
+  if (pressed)
+    app_handleButtonPress(button);
+  else
+    app_handleButtonRelease(button);
+}
+
+static void inputWheel(void * opaque, double motion)
+{
+  (void)opaque;
+  app_handleWheelMotion(motion);
+}
+
+static void inputKey(void * opaque, int scancode, bool pressed)
+{
+  (void)opaque;
+  if (pressed)
+    app_handleKeyPress(scancode);
+  else
+    app_handleKeyRelease(scancode);
+}
+
+static void inputText(void * opaque, const char * text)
+{
+  (void)opaque;
+  app_handleKeyboardTyped(text);
+}
+
+static void inputModifiers(void * opaque, bool ctrl, bool shift,
+    bool alt, bool super)
+{
+  (void)opaque;
+  app_handleKeyboardModifiers(ctrl, shift, alt, super);
+}
+
+static void inputLEDs(void * opaque, bool numLock, bool capsLock,
+    bool scrollLock)
+{
+  (void)opaque;
+  app_handleKeyboardLEDs(numLock, capsLock, scrollLock);
+}
+
+static void inputEnter(void * opaque, bool entered)
+{
+  (void)opaque;
+  app_handleEnterEvent(entered);
+}
+
+static void inputFocus(void * opaque, bool focused)
+{
+  (void)opaque;
+  app_handleFocusEvent(focused);
+}
+
+static const LG_DSInputSink inputSink = {
+  .position  = inputPosition,
+  .relative  = inputRelative,
+  .button    = inputButton,
+  .wheel     = inputWheel,
+  .key       = inputKey,
+  .text      = inputText,
+  .modifiers = inputModifiers,
+  .leds      = inputLEDs,
+  .enter     = inputEnter,
+  .focus     = inputFocus,
+};
+
+static void x11SignalFrame(LG_DSWaitFrameResult result)
+{
+  atomic_fetch_or_explicit(
+      &x11.frameEventFlags, result, memory_order_release);
+  lgSignalEvent(x11.frameEvent);
+}
+
+static uint64_t x11ModePeriod(
+    const XRRScreenResources * resources, RRMode modeID)
+{
+  for (int i = 0; i < resources->nmode; ++i)
+  {
+    const XRRModeInfo * mode = resources->modes + i;
+    if (mode->id != modeID || !mode->dotClock ||
+        !mode->hTotal || !mode->vTotal)
+      continue;
+
+    uint64_t pixels = (uint64_t)mode->hTotal * mode->vTotal;
+    if (mode->modeFlags & RR_DoubleScan)
+      pixels *= 2;
+    if (mode->modeFlags & RR_Interlace)
+      pixels /= 2;
+
+    return pixels / mode->dotClock * 1000000000ULL +
+      pixels % mode->dotClock * 1000000000ULL / mode->dotClock;
+  }
+
+  return 0;
+}
+
+static void x11UpdateFramePeriod(void)
+{
+  uint64_t fastest = 0;
+  const Window root = DefaultRootWindow(x11.display);
+  XRRScreenResources * resources =
+    XRRGetScreenResourcesCurrent(x11.display, root);
+  if (!resources)
+  {
+    atomic_store(&x11.nominalPeriod, 0);
+    return;
+  }
+
+  for (int i = 0; i < resources->ncrtc; ++i)
+  {
+    XRRCrtcInfo * crtc =
+      XRRGetCrtcInfo(x11.display, resources, resources->crtcs[i]);
+    if (!crtc)
+      continue;
+
+    const bool intersects = crtc->mode && crtc->width && crtc->height &&
+      x11.rect.x < crtc->x + (int)crtc->width &&
+      x11.rect.x + x11.rect.w > crtc->x &&
+      x11.rect.y < crtc->y + (int)crtc->height &&
+      x11.rect.y + x11.rect.h > crtc->y;
+    if (intersects)
+    {
+      const uint64_t candidate = x11ModePeriod(resources, crtc->mode);
+      if (candidate && (!fastest || candidate < fastest))
+        fastest = candidate;
+    }
+
+    XRRFreeCrtcInfo(crtc);
+  }
+
+  XRRFreeScreenResources(resources);
+  atomic_store(&x11.nominalPeriod, fastest);
+}
+
+static bool x11DoPresent(uint64_t msc)
+{
+  static bool startup = true;
+  if (startup)
+  {
+    XPresentPixmap(
+      x11.display,
+      x11.window,
+      x11.presentPixmap,
+      x11.presentSerial++,
+      x11.presentRegion, // valid
+      x11.presentRegion, // update
+      0,                 // x_off,
+      0,                 // y_off,
+      None,              // target_crtc
+      None,              // wait_fence
+      None,              // idle_fence
+      PresentOptionNone, // options
+      0,                 // target_msc,
+      0,                 // divisor,
+      0,                 // remainder,
+      NULL,              // notifies
+      0                  // nnotifies
+    );
+    startup = false;
+    return false;
+  }
+
+  static bool     first   = true;
+  static uint64_t lastMsc = 0;
+
+  bool     discontinuity = false;
+  uint64_t refill;
+  if (!first)
+  {
+    const int64_t queued = (int64_t)(lastMsc - msc);
+    if (queued < 0 || queued > 50)
+    {
+      // The compositor advanced beyond the synthetic queue or reset its MSC.
+      // Reseed from the observed value or cadence callbacks stop permanently.
+      lastMsc       = msc;
+      refill        = 50;
+      discontinuity = true;
+    }
+    else
+      refill = 50 - (uint64_t)queued;
+  }
+  else
+  {
+    refill  = 50;
+    first   = false;
+    lastMsc = msc;
+  }
+
+  if (refill < 25)
+    return discontinuity;
+
+  for (uint64_t i = 0; i < refill; ++i)
+  {
+    XPresentPixmap(
+      x11.display,
+      x11.window,
+      x11.presentPixmap,
+      x11.presentSerial++,
+      x11.presentRegion, // valid
+      x11.presentRegion, // update
+      0,                 // x_off,
+      0,                 // y_off,
+      None,              // target_crtc
+      None,              // wait_fence
+      None,              // idle_fence
+      PresentOptionNone, // options
+      ++lastMsc,         // target_msc,
+      0,                 // divisor,
+      0,                 // remainder,
+      NULL,              // notifies
+      0                  // nnotifies
+    );
+  }
+
+  return discontinuity;
+}
+
+static void x11Setup(void)
+{
+  X11WM_Default.setup();
+  X11WM_i3     .setup();
+}
+
+static bool x11Probe(void)
+{
+  return getenv("DISPLAY") != NULL;
+}
+
+static bool x11EarlyInit(void)
+{
+  XInitThreads();
+  return true;
+}
+
+static void x11CheckEWMHSupport(void)
+{
+  if (x11atoms._NET_SUPPORTING_WM_CHECK == None ||
+      x11atoms._NET_SUPPORTED == None)
+    return;
+
+  Atom type;
+  int fmt;
+  unsigned long num, bytes;
+  unsigned char *data;
+
+  if (XGetWindowProperty(x11.display, DefaultRootWindow(x11.display),
+      x11atoms._NET_SUPPORTING_WM_CHECK, 0, ~0L, False, XA_WINDOW,
+      &type, &fmt, &num, &bytes, &data) != Success || !data)
+    goto out;
+
+  Window * windowFromRoot = (Window *)data;
+
+  if (XGetWindowProperty(x11.display, *windowFromRoot,
+      x11atoms._NET_SUPPORTING_WM_CHECK, 0, ~0L, False, XA_WINDOW,
+      &type, &fmt, &num, &bytes, &data) != Success || !data)
+    goto out_root;
+
+  Window * windowFromChild = (Window *)data;
+  if (*windowFromChild != *windowFromRoot)
+    goto out_child;
+
+  if (XGetWindowProperty(x11.display, DefaultRootWindow(x11.display),
+      x11atoms._NET_SUPPORTED, 0, ~0L, False, AnyPropertyType,
+      &type, &fmt, &num, &bytes, &data) != Success || !data)
+    goto out_child;
+
+  Atom * supported = (Atom *)data;
+  unsigned long supportedCount = num;
+
+  if (XGetWindowProperty(x11.display, *windowFromRoot,
+      x11atoms._NET_WM_NAME, 0, ~0L, False, AnyPropertyType,
+      &type, &fmt, &num, &bytes, &data) != Success || !data)
+    goto out_supported;
+
+  char * wmName = (char *)data;
+
+  for(unsigned long i = 0; i < supportedCount; ++i)
+  {
+    if (supported[i] == x11atoms._NET_WM_STATE_FOCUSED)
+      x11.ewmhHasFocusEvent = true;
+  }
+
+  DEBUG_INFO("EWMH-compliant window manager detected: %s", wmName);
+  x11.ewmhSupport = true;
+
+  if (strcmp(wmName, "i3") == 0)
+    x11.wm = &X11WM_i3;
+
+  XFree(wmName);
+out_supported:
+  XFree(supported);
+out_child:
+  XFree(windowFromChild);
+out_root:
+  XFree(windowFromRoot);
+out:
+  return;
+}
+
+static int x11ErrorHandler(Display * display, XErrorEvent * error)
+{
+  char errorText[1024];
+  XGetErrorText(display, error->error_code, errorText, sizeof(errorText));
+
+  DEBUG_ERROR("X11 Error: %s", errorText);
+  DEBUG_PRINT_BACKTRACE();
+  return 0;
+}
+
+static int x11IOErrorHandler(Display * display)
+{
+  DEBUG_FATAL("Fatal X11 IO Error");
+  return 0;
+}
+
+static bool x11Init(const LG_DSInitParams params)
+{
+  XIDeviceInfo *devinfo;
+  int count;
+  int event, error;
+
+  XSetErrorHandler(x11ErrorHandler);
+  XSetIOErrorHandler(x11IOErrorHandler);
+
+  memset(&x11, 0, sizeof(x11));
+  x11InputInit(&x11.input, &inputSink, NULL);
+  LG_LOCK_INIT(x11.pointerLock);
+  atomic_init(&x11.captureActive, false);
+  x11.eventSource         = params.eventSource;
+  x11.xValuator           = -1;
+  x11.yValuator           = -1;
+  x11.numLockIndicator    = -1;
+  x11.capsLockIndicator   = -1;
+  x11.scrollLockIndicator = -1;
+  x11.xkbEvent            = -1;
+  x11.display             = XOpenDisplay(NULL);
+  x11.jitRender           = params.jitRender;
+  x11.wm                  = &X11WM_Default;
+  x11.rect                = (struct Rect) {
+    .x = params.x,
+    .y = params.y,
+    .w = params.w,
+    .h = params.h,
+  };
+
+  XSetWindowAttributes swa =
+  {
+    .event_mask =
+      StructureNotifyMask |
+      PropertyChangeMask |
+      ExposureMask
+  };
+  unsigned long swaMask = CWEventMask;
+
+#ifdef ENABLE_OPENGL
+  if (params.opengl)
+  {
+    GLint glXAttribs[] =
+    {
+      GLX_RGBA,
+      GLX_DOUBLEBUFFER  ,
+      GLX_DEPTH_SIZE    , 24,
+      GLX_STENCIL_SIZE  , 0,
+      GLX_RED_SIZE      , 8,
+      GLX_GREEN_SIZE    , 8,
+      GLX_BLUE_SIZE     , 8,
+      GLX_DEPTH_SIZE    , 0,
+      GLX_SAMPLE_BUFFERS, 0,
+      GLX_SAMPLES       , 0,
+      None
+    };
+
+    x11.visual = glXChooseVisual(x11.display,
+        XDefaultScreen(x11.display), glXAttribs);
+
+    if (!x11.visual)
+    {
+      DEBUG_ERROR("glXChooseVisual failed");
+      goto fail_display;
+    }
+
+    swa.colormap = XCreateColormap(x11.display, XDefaultRootWindow(x11.display),
+        x11.visual->visual, AllocNone);
+    swaMask |= CWColormap;
+  }
+#endif
+
+  x11.window = XCreateWindow(
+      x11.display,
+      XDefaultRootWindow(x11.display),
+      params.x, params.y,
+      params.w, params.h,
+      0,
+      x11.visual ? x11.visual->depth  : CopyFromParent,
+      InputOutput,
+      x11.visual ? x11.visual->visual : CopyFromParent,
+      swaMask,
+      &swa);
+
+  if (!x11.window)
+  {
+    DEBUG_ERROR("XCreateWindow failed");
+    goto fail_display;
+  }
+
+  XStoreName(x11.display, x11.window, params.title);
+
+  XClassHint hint =
+  {
+    .res_name  = strdup(params.title),
+    .res_class = strdup(params.appId)
+  };
+  XSetClassHint(x11.display, x11.window, &hint);
+  free(hint.res_name);
+  free(hint.res_class);
+
+  XSizeHints *xsh = XAllocSizeHints();
+  if (params.center)
+  {
+    xsh->flags      |= PWinGravity;
+    xsh->win_gravity = 5; //Center
+  }
+
+  if (!params.resizable)
+  {
+    xsh->flags      |= PMinSize | PMaxSize;
+    xsh->min_width   = params.w;
+    xsh->max_width   = params.w;
+    xsh->min_height  = params.h;
+    xsh->max_height  = params.h;
+  }
+
+  XSetWMNormalHints(x11.display, x11.window, xsh);
+  XFree(xsh);
+
+  X11AtomsInit();
+  XSetWMProtocols(x11.display, x11.window, &x11atoms.WM_DELETE_WINDOW, 1);
+
+  // check for Extended Window Manager Hints support
+  x11CheckEWMHSupport();
+
+  if (!x11.wm->init())
+  {
+    x11.wm = &X11WM_Default;
+    if (!x11.wm->init())
+    {
+      DEBUG_ERROR("Failed to initialize the X11 window manager subsystem");
+      goto fail_window;
+    }
+  }
+
+  if (x11atoms._NET_WM_PID)
+  {
+    pid_t pid = getpid();
+    XChangeProperty(
+      x11.display,
+      x11.window,
+      x11atoms._NET_WM_PID,
+      XA_CARDINAL,
+      32,
+      PropModeReplace,
+      (unsigned char *)&pid,
+      1
+    );
+  }
+
+  if (params.borderless)
+  {
+    if (x11atoms._MOTIF_WM_HINTS)
+    {
+      const struct MwmHints hints =
+      {
+        .flags       = MWM_HINTS_DECORATIONS,
+        .decorations = 0
+      };
+
+      XChangeProperty(
+        x11.display,
+        x11.window,
+        x11atoms._MOTIF_WM_HINTS,
+        x11atoms._MOTIF_WM_HINTS,
+        32,
+        PropModeReplace,
+        (unsigned char *)&hints,
+        5
+      );
+    }
+    else
+    {
+      // fallback to making a utility window, not ideal but better then nothing
+      XChangeProperty(
+        x11.display,
+        x11.window,
+        x11atoms._NET_WM_WINDOW_TYPE,
+        XA_ATOM,
+        32,
+        PropModeReplace,
+        (unsigned char *)&x11atoms._NET_WM_WINDOW_TYPE_UTILITY,
+        1
+      );
+    }
+  }
+  else
+  {
+    XChangeProperty(
+      x11.display,
+      x11.window,
+      x11atoms._NET_WM_WINDOW_TYPE,
+      XA_ATOM,
+      32,
+      PropModeReplace,
+      (unsigned char *)&x11atoms._NET_WM_WINDOW_TYPE_NORMAL,
+      1
+    );
+  }
+
+  if (params.maximize)
+  {
+    Atom wmState[2] =
+    {
+      x11atoms._NET_WM_STATE_MAXIMIZED_HORZ,
+      x11atoms._NET_WM_STATE_MAXIMIZED_VERT
+    };
+
+    XChangeProperty(
+      x11.display,
+      x11.window,
+      x11atoms._NET_WM_STATE,
+      XA_ATOM,
+      32,
+      PropModeReplace,
+      (unsigned char *)&wmState,
+      2
+    );
+  }
+
+  if (x11atoms._NET_REQUEST_FRAME_EXTENTS)
+  {
+    XEvent reqevent =
+    {
+      .xclient =
+      {
+        .type         = ClientMessage,
+        .window       = x11.window,
+        .format       = 32,
+        .message_type = x11atoms._NET_REQUEST_FRAME_EXTENTS
+      }
+    };
+
+    XSendEvent(x11.display, DefaultRootWindow(x11.display), False,
+        SubstructureNotifyMask | SubstructureRedirectMask, &reqevent);
+  }
+
+  int major = 2;
+  int minor = 0;
+  if (XIQueryVersion(x11.display, &major, &minor) != Success)
+  {
+    DEBUG_ERROR("Failed to query the XInput version");
+    goto fail_window;
+  }
+
+  DEBUG_INFO("X11 XInput %d.%d in use", major, minor);
+
+  devinfo = XIQueryDevice(x11.display, XIAllDevices, &count);
+  if (!devinfo)
+  {
+    DEBUG_ERROR("XIQueryDevice failed");
+    goto fail_window;
+  }
+
+  Atom rel_x = XInternAtom(x11.display, "Rel X", True);
+  Atom rel_y = XInternAtom(x11.display, "Rel Y", True);
+
+  bool havePointer  = false;
+  bool haveKeyboard = false;
+  for(int i = 0; i < count; ++i)
+  {
+    /* look for the master pointing device */
+    if (!havePointer && devinfo[i].use == XIMasterPointer)
+    {
+      for(int j = 0; j < devinfo[i].num_classes; ++j)
+      {
+        XIAnyClassInfo *cdevinfo =
+          (XIAnyClassInfo *)(devinfo[i].classes[j]);
+        if (cdevinfo->type == XIValuatorClass)
+        {
+          XIValuatorClassInfo *vdevinfo = (XIValuatorClassInfo *)cdevinfo;
+          if (vdevinfo->label == rel_x || (!vdevinfo->label &&
+              vdevinfo->number == 0 && vdevinfo->mode == XIModeRelative))
+            x11.xValuator = vdevinfo->number;
+          else if (vdevinfo->label == rel_y || (!vdevinfo->label &&
+              vdevinfo->number == 1 && vdevinfo->mode == XIModeRelative))
+            x11.yValuator = vdevinfo->number;
+        }
+      }
+
+      if (x11.xValuator >= 0 && x11.yValuator >= 0)
+      {
+        havePointer = true;
+        x11.pointerDev = devinfo[i].deviceid;
+      }
+    }
+
+    /* look for the master keyboard device */
+    if (!haveKeyboard && devinfo[i].use == XIMasterKeyboard)
+      for(int j = 0; j < devinfo[i].num_classes; ++j)
+      {
+        XIAnyClassInfo *cdevinfo =
+          (XIAnyClassInfo *)(devinfo[i].classes[j]);
+        if (cdevinfo->type == XIKeyClass)
+        {
+          haveKeyboard = true;
+          x11.keyboardDev = devinfo[i].deviceid;
+          break;
+        }
+      }
+  }
+
+  if (!havePointer)
+  {
+    DEBUG_ERROR("Failed to find the master pointing device");
+    XIFreeDeviceInfo(devinfo);
+    goto fail_window;
+  }
+
+  if (!haveKeyboard)
+  {
+    DEBUG_ERROR("Failed to find the master keyboard device");
+    XIFreeDeviceInfo(devinfo);
+    goto fail_window;
+  }
+
+  XDisplayKeycodes(x11.display, &x11.minKeycode, &x11.maxKeycode);
+  x11UpdateKeyboardGroup();
+  x11.numLockIndicator    = x11GetIndicatorIndex("Num Lock");
+  x11.capsLockIndicator   = x11GetIndicatorIndex("Caps Lock");
+  x11.scrollLockIndicator = x11GetIndicatorIndex("Scroll Lock");
+
+  int xkbOpcode;
+  int xkbEvent;
+  int xkbError;
+  int xkbMajor = XkbMajorVersion;
+  int xkbMinor = XkbMinorVersion;
+  if (XkbQueryExtension(x11.display, &xkbOpcode, &xkbEvent,
+        &xkbError, &xkbMajor, &xkbMinor))
+  {
+    x11.xkbEvent = xkbEvent;
+    XkbSelectEvents(x11.display, XkbUseCoreKbd,
+        XkbIndicatorStateNotifyMask, XkbIndicatorStateNotifyMask);
+  }
+
+  XIFreeDeviceInfo(devinfo);
+
+  XQueryExtension(x11.display, "XInputExtension", &x11.xinputOp, &event, &error);
+  XIEventMask eventmask;
+  unsigned char mask[XIMaskLen(XI_LASTEVENT)] = { 0 };
+
+  eventmask.deviceid = XIAllMasterDevices;
+  eventmask.mask_len = sizeof(mask);
+  eventmask.mask     = mask;
+
+  XISetMask(mask, XI_FocusIn );
+  XISetMask(mask, XI_FocusOut);
+
+  XISetMask(mask, XI_Enter        );
+  XISetMask(mask, XI_Leave        );
+  XISetMask(mask, XI_Motion       );
+  XISetMask(mask, XI_KeyPress     );
+  XISetMask(mask, XI_KeyRelease   );
+  XISetMask(mask, XI_ButtonPress  );
+  XISetMask(mask, XI_ButtonRelease);
+
+  if (XISelectEvents(x11.display, x11.window, &eventmask, 1) != Success)
+  {
+    XFree(mask);
+    DEBUG_ERROR("Failed to select the xinput events");
+    goto fail_window;
+  }
+
+  unsigned long value = 1;
+  XChangeProperty(
+    x11.display,
+    x11.window,
+    x11atoms._NET_WM_BYPASS_COMPOSITOR,
+    XA_CARDINAL,
+    32,
+    PropModeReplace,
+    (unsigned char *)&value,
+    1
+  );
+
+  XChangeProperty(
+    x11.display,
+    x11.window,
+    x11atoms._NET_WM_ICON,
+    XA_CARDINAL,
+    32,
+    PropModeReplace,
+    (unsigned char *)icondata,
+    ARRAY_LENGTH(icondata)
+  );
+
+  /* create the blank cursor */
+  {
+    static char data[] = { 0x00 };
+    XColor dummy;
+    Pixmap temp = XCreateBitmapFromData(x11.display, x11.window, data, 1, 1);
+    x11.cursors[LG_POINTER_NONE] = XCreatePixmapCursor(x11.display, temp, temp,
+        &dummy, &dummy, 0, 0);
+    XFreePixmap(x11.display, temp);
+  }
+
+  XcursorImages * images;
+  if (params.largeCursorDot)
+    images = x11cursor_load(b_no_input_cursor_32_xcur,
+        b_no_input_cursor_32_xcur_size);
+  else
+    images = x11cursor_load(b_no_input_cursor_16_xcur,
+        b_no_input_cursor_16_xcur_size);
+
+  x11.cursors[LG_POINTER_SQUARE] =
+    XcursorImagesLoadCursor(x11.display, images);
+  XcursorImagesDestroy(images);
+
+  /* initialize the rest of the cursors */
+  const char * cursorLookup[LG_POINTER_COUNT] = {
+    NULL               , // LG_POINTER_NONE
+    NULL               , // LG_POINTER_SQUARE
+    "left_ptr"         , // LG_POINTER_ARROW
+    "text"             , // LG_POINTER_INPUT
+    "move"             , // LG_POINTER_MOVE
+    "ns-resize"        , // LG_POINTER_RESIZE_NS
+    "ew-resize"        , // LG_POINTER_RESIZE_EW
+    "nesw-resize"      , // LG_POINTER_RESIZE_NESW
+    "nwse-resize"      , // LG_POINTER_RESIZE_NWSE
+    "hand"             , // LG_POINTER_HAND
+    "not-allowed"      , // LG_POINTER_NOT_ALLOWED
+  };
+
+  const char * fallbackLookup[LG_POINTER_COUNT] = {
+    NULL               , // LG_POINTER_NONE
+    NULL               , // LG_POINTER_SQUARE
+    "left_ptr"         , // LG_POINTER_ARROW
+    "xterm"            , // LG_POINTER_INPUT
+    "fluer"            , // LG_POINTER_MOVE
+    "sb_v_double_arrow", // LG_POINTER_RESIZE_NS
+    "sb_h_double_arrow", // LG_POINTER_RESIZE_EW
+    "sizing"           , // LG_POINTER_RESIZE_NESW
+    "sizing"           , // LG_POINTER_RESIZE_NWSE
+    "hand2"            , // LG_POINTER_HAND
+    "X_cursor"         , // LG_POINTER_NOT_ALLOWED
+  };
+
+  for(int i = 0; i < LG_POINTER_COUNT; ++i)
+  {
+    if (!cursorLookup[i])
+      continue;
+    x11.cursors[i] = XcursorLibraryLoadCursor(x11.display, cursorLookup[i]);
+    if (!x11.cursors[i])
+      x11.cursors[i] = XcursorLibraryLoadCursor(x11.display, fallbackLookup[i]);
+  }
+
+  /* default to the square cursor */
+  XDefineCursor(x11.display, x11.window, x11.cursors[LG_POINTER_SQUARE]);
+
+  x11.xrandrSupported =
+    XRRQueryExtension(x11.display, &x11.xrandrEvent, &error);
+  if (x11.xrandrSupported)
+  {
+    XRRSelectInput(x11.display, DefaultRootWindow(x11.display),
+      RRScreenChangeNotifyMask | RRCrtcChangeNotifyMask |
+      RROutputChangeNotifyMask);
+    x11UpdateFramePeriod();
+  }
+  else
+    DEBUG_WARN("X11 nominal output refresh is unavailable");
+
+  if (x11.jitRender)
+  {
+    x11.frameEvent = lgCreateEvent(true, 0);
+    XPresentQueryExtension(x11.display, &x11.xpresentOp, &event, &error);
+    XPresentSelectInput(x11.display, x11.window, PresentCompleteNotifyMask);
+    x11.presentPixmap = XCreatePixmap(x11.display, x11.window, 1, 1, 24);
+    x11.presentRegion = XFixesCreateRegion(x11.display, &(XRectangle){0}, 1);
+  }
+
+  XMapWindow(x11.display, x11.window);
+  XFlush(x11.display);
+
+  if (!params.center)
+    XMoveWindow(x11.display, x11.window, params.x, params.y);
+
+  if (params.fullscreen)
+    x11.doFullscreenOnExpose = true;
+
+  XSetLocaleModifiers(""); // Load XMODIFIERS
+  x11.xim = XOpenIM(x11.display, 0, 0, 0);
+
+  if (!x11.xim)
+  {
+    // disable IME
+    XSetLocaleModifiers("@im=none");
+    x11.xim = XOpenIM(x11.display, 0, 0, 0);
+  }
+
+  if (x11.xim)
+  {
+    x11.xic = XCreateIC(
+      x11.xim,
+      XNInputStyle,   XIMPreeditNothing | XIMStatusNothing,
+      XNClientWindow, x11.window,
+      XNFocusWindow,  x11.window,
+      NULL
+    );
+  }
+  else
+    DEBUG_WARN("Failed to initialize X Input Method");
+
+  if (x11.xic)
+  {
+    XSetICFocus(x11.xic);
+    XSelectInput(x11.display, x11.window, StructureNotifyMask | ExposureMask |
+        PropertyChangeMask | KeyPressMask);
+  }
+  else
+    DEBUG_WARN("Failed to initialize X Input Context, typing will not work");
+
+  if (!lgCreateThread("X11EventThread", x11EventThread, NULL, &x11.eventThread))
+  {
+    DEBUG_ERROR("Failed to create the x11 event thread");
+    goto fail_window;
+  }
+
+  if (x11.jitRender)
+    x11DoPresent(0);
+
+  return true;
+
+fail_window:
+  XDestroyWindow(x11.display, x11.window);
+
+fail_display:
+  XCloseDisplay(x11.display);
+
+  return false;
+}
+
+static void x11Startup(void)
+{
+}
+
+static void x11Shutdown(void)
+{
+  if (x11.frameEvent)
+    x11SignalFrame(LG_DS_WAIT_FRAME_INTERRUPTED);
+
+  if (x11.eventThread)
+  {
+    lgJoinThread(x11.eventThread, NULL);
+    x11.eventThread = NULL;
+  }
+}
+
+static void x11Free(void)
+{
+  x11Shutdown();
+  x11CBFree();
+
+  if (x11.jitRender)
+  {
+    lgFreeEvent(x11.frameEvent);
+    XFreePixmap(x11.display, x11.presentPixmap);
+    XFixesDestroyRegion(x11.display, x11.presentRegion);
+  }
+
+  if (x11.window)
+    XDestroyWindow(x11.display, x11.window);
+
+  for(int i = 0; i < LG_POINTER_COUNT; ++i)
+    if (x11.cursors[i])
+      XFreeCursor(x11.display, x11.cursors[i]);
+
+  LG_LOCK_FREE(x11.pointerLock);
+  x11.wm->deinit();
+  XCloseDisplay(x11.display);
+}
+
+static bool x11GetProp(LG_DSProperty prop, void *ret)
+{
+  switch (prop)
+  {
+    case LG_DS_WARP_SUPPORT:
+      *(enum LG_DSWarpSupport*)ret = LG_DS_WARP_SCREEN;
+      return true;
+
+    case LG_DS_MAX_MULTISAMPLE:
+    {
+      Display * dpy = XOpenDisplay(NULL);
+      if (!dpy)
+        return false;
+
+      XVisualInfo queryTemplate;
+      queryTemplate.screen = 0;
+
+      int visualCount;
+      int maxSamples = -1;
+      XVisualInfo * visuals = XGetVisualInfo(dpy, VisualScreenMask,
+          &queryTemplate, &visualCount);
+
+      for (int i = 0; i < visualCount; i++)
+      {
+        XVisualInfo * visual = &visuals[i];
+
+        int res, supportsGL;
+        // Some GLX visuals do not use GL, and these must be ignored in our search.
+        if ((res = glXGetConfig(dpy, visual, GLX_USE_GL, &supportsGL)) != 0 ||
+            !supportsGL)
+          continue;
+
+        int sampleBuffers, samples;
+        if ((res = glXGetConfig(dpy, visual, GLX_SAMPLE_BUFFERS, &sampleBuffers)) != 0)
+          continue;
+
+        // Will be 1 if this visual supports multisampling
+        if (sampleBuffers != 1)
+          continue;
+
+        if ((res = glXGetConfig(dpy, visual, GLX_SAMPLES, &samples)) != 0)
+          continue;
+
+        // Track the largest number of samples supported
+        if (samples > maxSamples)
+          maxSamples = samples;
+      }
+
+      XFree(visuals);
+      XCloseDisplay(dpy);
+
+      *(int*)ret = maxSamples;
+      return true;
+    }
+
+    default:
+      return true;
+  }
+}
+
+static int x11EventThread(void * unused)
+{
+  enum
+  {
+    EPOLL_SOURCE_X11,
+    EPOLL_SOURCE_EXTERNAL,
+  };
+
+  int epollfd = epoll_create1(0);
+  if (epollfd == -1)
+  {
+    DEBUG_ERROR("epolld_create1 failure");
+    return 0;
+  }
+
+  struct epoll_event ev =
+  {
+    .events   = EPOLLIN,
+    .data.u32 = EPOLL_SOURCE_X11,
+  };
+  const int fd = ConnectionNumber(x11.display);
+  if (epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &ev) == -1)
+  {
+    close(epollfd);
+    DEBUG_ERROR("epoll_ctl failed");
+    return 0;
+  }
+
+  bool pollEventSource = false;
+  if (x11.eventSource.fd >= 0 && x11.eventSource.callback)
+  {
+    ev.data.u32 = EPOLL_SOURCE_EXTERNAL;
+    if (epoll_ctl(epollfd, EPOLL_CTL_ADD,
+          x11.eventSource.fd, &ev) == -1)
+    {
+      DEBUG_WARN("Failed to register the external event source; polling");
+      pollEventSource = true;
+    }
+  }
+
+  while(app_isRunning())
+  {
+    const uint64_t lastWMEvent = atomic_load(&x11.lastWMEvent);
+    if (x11.invalidateAll && microtime() - lastWMEvent > 100000UL)
+    {
+      x11.invalidateAll = false;
+      app_invalidateWindow(true);
+    }
+
+    const bool xPending = XPending(x11.display) != 0;
+    struct epoll_event events[2];
+    const int nfds = epoll_wait(epollfd, events, ARRAY_LENGTH(events),
+        xPending ? 0 : pollEventSource ? 10 : 100);
+    if (nfds == -1)
+    {
+      if (errno == EINTR)
+        continue;
+
+      close(epollfd);
+      DEBUG_ERROR("epoll_wait failure");
+      return 0;
+    }
+
+    for (int i = 0; i < nfds; ++i)
+      if (events[i].data.u32 == EPOLL_SOURCE_EXTERNAL)
+        x11.eventSource.callback(x11.eventSource.opaque);
+
+    if (pollEventSource)
+      x11.eventSource.callback(x11.eventSource.opaque);
+
+    if (!XPending(x11.display))
+    {
+      x11CBMaintenance(microtime());
+      continue;
+    }
+
+    XEvent xe;
+    XNextEvent(x11.display, &xe);
+
+    if (x11.xrandrSupported &&
+        (xe.type == x11.xrandrEvent + RRScreenChangeNotify ||
+         xe.type == x11.xrandrEvent + RRNotify))
+    {
+      if (xe.type == x11.xrandrEvent + RRScreenChangeNotify)
+        XRRUpdateConfiguration(&xe);
+      x11UpdateFramePeriod();
+      continue;
+    }
+
+    if (xe.type == x11.xkbEvent)
+    {
+      const XkbEvent * event = (const XkbEvent *)&xe;
+      if (event->any.xkb_type == XkbIndicatorStateNotify)
+        emitKeyboardState(event->indicators.state);
+      continue;
+    }
+
+    // call the clipboard handling code
+    if (x11CBEventThread(&xe))
+      continue;
+
+    switch(xe.type)
+    {
+      case ClientMessage:
+        if (xe.xclient.data.l[0] == x11atoms.WM_DELETE_WINDOW)
+          app_handleCloseEvent();
+        continue;
+
+      case ConfigureNotify:
+      {
+        atomic_store(&x11.lastWMEvent, microtime());
+
+        int x, y;
+
+        /* the window may have been re-parented so we need to translate to
+         * ensure we get the screen top left position of the window */
+        Window child;
+        XTranslateCoordinates(
+            x11.display,
+            x11.window,
+            DefaultRootWindow(x11.display),
+            0, 0,
+            &x,
+            &y,
+            &child);
+
+        x11.rect.x = x;
+        x11.rect.y = y;
+        x11.rect.w = xe.xconfigure.width;
+        x11.rect.h = xe.xconfigure.height;
+        if (x11.xrandrSupported)
+          x11UpdateFramePeriod();
+
+        app_updateWindowPos(x, y);
+
+        if (x11.fullscreen)
+        {
+          struct Border border = {0};
+          app_handleResizeEvent(x11.rect.w, x11.rect.h, 1, border);
+        }
+        else
+          app_handleResizeEvent(x11.rect.w, x11.rect.h, 1, x11.border);
+        break;
+      }
+
+      case Expose:
+      {
+        atomic_store(&x11.lastWMEvent, microtime());
+        x11.invalidateAll = true;
+        if (x11.doFullscreenOnExpose)
+        {
+          x11SetFullscreen(true);
+          x11.doFullscreenOnExpose = false;
+        }
+        break;
+      }
+
+      case GenericEvent:
+      {
+        XGenericEventCookie *cookie = (XGenericEventCookie*)&xe.xcookie;
+        if (cookie->extension == x11.xinputOp)
+        {
+          XGetEventData(x11.display, cookie);
+          x11XInputEvent(cookie);
+          XFreeEventData(x11.display, cookie);
+        }
+        else if (cookie->extension == x11.xpresentOp)
+        {
+          XGetEventData(x11.display, cookie);
+          x11XPresentEvent(cookie);
+          XFreeEventData(x11.display, cookie);
+        }
+        break;
+      }
+
+      case PropertyNotify:
+
+        // ignore property events that are not for us
+        if (xe.xproperty.display != x11.display      ||
+            xe.xproperty.window  != x11.window       ||
+            xe.xproperty.state   != PropertyNewValue)
+          continue;
+
+        if (xe.xproperty.atom == x11atoms._NET_WM_STATE)
+        {
+          atomic_store(&x11.lastWMEvent, microtime());
+
+          Atom type;
+          int fmt;
+          unsigned long num, bytes;
+          unsigned char *data;
+
+          if (XGetWindowProperty(x11.display, x11.window,
+              x11atoms._NET_WM_STATE, 0, ~0L, False, AnyPropertyType,
+              &type, &fmt, &num, &bytes, &data) != Success)
+            break;
+
+          bool fullscreen = false;
+          bool focused    = false;
+          for(unsigned long i = 0; i < num; ++i)
+          {
+            Atom prop = ((Atom *)data)[i];
+            if (prop == x11atoms._NET_WM_STATE_FULLSCREEN)
+              fullscreen = true;
+            else if (prop == x11atoms._NET_WM_STATE_FOCUSED)
+              focused = true;
+          }
+
+          if (x11.ewmhHasFocusEvent && x11.input.focused != focused)
+            setFocus(focused);
+
+          x11.fullscreen = fullscreen;
+          XFree(data);
+          break;
+        }
+
+        if (xe.xproperty.atom == x11atoms._NET_FRAME_EXTENTS)
+        {
+          atomic_store(&x11.lastWMEvent, microtime());
+
+          Atom type;
+          int fmt;
+          unsigned long num, bytes;
+          unsigned char *data;
+
+          if (XGetWindowProperty(x11.display, x11.window,
+                x11atoms._NET_FRAME_EXTENTS, 0, 4, False, AnyPropertyType,
+                &type, &fmt, &num, &bytes, &data) != Success)
+              break;
+
+          if (num >= 4)
+          {
+            long *cardinal = (long *)data;
+            x11.border.left   = cardinal[0];
+            x11.border.right  = cardinal[1];
+            x11.border.top    = cardinal[2];
+            x11.border.bottom = cardinal[3];
+            app_handleResizeEvent(x11.rect.w, x11.rect.h, 1, x11.border);
+          }
+
+          XFree(data);
+          break;
+        }
+        break;
+    }
+  }
+
+  close(epollfd);
+  return 0;
+}
+
+static enum Modifiers keySymToModifier(KeySym sym)
+{
+  switch (sym)
+  {
+    case XK_Control_L: return MOD_CTRL_LEFT;
+    case XK_Control_R: return MOD_CTRL_RIGHT;
+    case XK_Shift_L:   return MOD_SHIFT_LEFT;
+    case XK_Shift_R:   return MOD_SHIFT_RIGHT;
+    case XK_Alt_L:     return MOD_ALT_LEFT;
+    case XK_Alt_R:     return MOD_ALT_RIGHT;
+    case XK_Super_L:   return MOD_SUPER_LEFT;
+    case XK_Super_R:   return MOD_SUPER_RIGHT;
+    default:           return -1;
+  }
+}
+
+static int x11GetIndicatorIndex(const char * name)
+{
+  const Atom atom = XInternAtom(x11.display, name, True);
+  int index;
+
+  if (atom == None ||
+      !XkbGetNamedIndicator(x11.display, atom, &index, NULL, NULL, NULL))
+    return -1;
+
+  return index;
+}
+
+static bool indicatorActive(unsigned int state, int index)
+{
+  return index >= 0 && index < XkbNumIndicators &&
+    (state & (UINT32_C(1) << index));
+}
+
+static void emitKeyboardState(unsigned int indicators)
+{
+  x11InputKeyboardState(&x11.input,
+    x11.modifiers[MOD_CTRL_LEFT] || x11.modifiers[MOD_CTRL_RIGHT],
+    x11.modifiers[MOD_SHIFT_LEFT] || x11.modifiers[MOD_SHIFT_RIGHT],
+    x11.modifiers[MOD_ALT_LEFT] || x11.modifiers[MOD_ALT_RIGHT],
+    x11.modifiers[MOD_SUPER_LEFT] || x11.modifiers[MOD_SUPER_RIGHT],
+    indicatorActive(indicators, x11.numLockIndicator),
+    indicatorActive(indicators, x11.capsLockIndicator),
+    indicatorActive(indicators, x11.scrollLockIndicator));
+}
+
+static void updateKeyboardState(void)
+{
+  unsigned int indicators = 0;
+  XkbGetIndicatorState(x11.display, XkbUseCoreKbd, &indicators);
+  emitKeyboardState(indicators);
+}
+
+static void updateKeyState(unsigned int keycode, bool pressed)
+{
+  const KeySym sym = XkbKeycodeToKeysym(x11.display, keycode,
+      atomic_load(&x11.keyboardGroup), 0);
+  const int modifier = keySymToModifier(sym);
+  if (modifier >= 0)
+  {
+    x11.modifiers[modifier] = pressed;
+    updateKeyboardState();
+    return;
+  }
+
+  if (pressed &&
+      (sym == XK_Num_Lock || sym == XK_Caps_Lock || sym == XK_Scroll_Lock))
+    updateKeyboardState();
+}
+
+static void x11UpdateKeyboardGroup(void)
+{
+  XkbStateRec state;
+  if (XkbGetState(x11.display, XkbUseCoreKbd, &state) == Success)
+    atomic_store(&x11.keyboardGroup, state.group);
+}
+
+static void setFocus(bool focused)
+{
+  if (x11.input.focused == focused)
+    return;
+
+  uint32_t keys[256];
+  size_t count = 0;
+  if (focused)
+  {
+    x11UpdateKeyboardGroup();
+
+    char keymap[X11_INPUT_KEYMAP_SIZE] = { 0 };
+    XQueryKeymap(x11.display, keymap);
+    memset(x11.modifiers, 0, sizeof(x11.modifiers));
+
+    count = x11InputHeldKeys(keymap, x11.minKeycode, x11.maxKeycode,
+        keys, ARRAY_LENGTH(keys));
+    for (size_t i = 0; i < count; ++i)
+    {
+      const unsigned int keycode = keys[i] + x11.minKeycode;
+      const KeySym sym = XkbKeycodeToKeysym(x11.display, keycode,
+          atomic_load(&x11.keyboardGroup), 0);
+      const int modifier = keySymToModifier(sym);
+      if (modifier >= 0)
+        x11.modifiers[modifier] = true;
+    }
+  }
+
+  x11InputFocus(&x11.input, focused, focused ? keys : NULL, count);
+  if (focused)
+    updateKeyboardState();
+}
+
+static bool x11GetKeyLabel(int sc, char * label, size_t size)
+{
+  const int keycode = sc + x11.minKeycode;
+  if (keycode < x11.minKeycode || keycode > x11.maxKeycode)
+    return false;
+
+  xkb_keysym_t sym = XkbKeycodeToKeysym(
+      x11.display, keycode, atomic_load(&x11.keyboardGroup), 0);
+  sym = xkb_keysym_to_upper(sym);
+
+  const uint32_t codepoint = xkb_keysym_to_utf32(sym);
+  return codepoint > 0x20 && codepoint != 0x7F &&
+    xkb_keysym_to_utf8(sym, label, size) > 0;
+}
+
+static void x11XInputEvent(XGenericEventCookie *cookie)
+{
+  switch(cookie->evtype)
+  {
+    case XI_FocusIn:
+    {
+      XIFocusOutEvent *xie = cookie->data;
+      if (x11.ewmhHasFocusEvent)
+      {
+        // if meta ungrab for move/resize
+        if (xie->mode == XINotifyUngrab)
+          setFocus(true);
+        return;
+      }
+
+      atomic_store(&x11.lastWMEvent, microtime());
+      if (x11.input.focused)
+        return;
+
+      if (xie->mode != XINotifyNormal &&
+          xie->mode != XINotifyWhileGrabbed &&
+          xie->mode != XINotifyUngrab)
+        return;
+
+
+      setFocus(true);
+      return;
+    }
+
+    case XI_FocusOut:
+    {
+      XIFocusOutEvent *xie = cookie->data;
+      if (x11.ewmhHasFocusEvent)
+      {
+        // if meta grab for move/resize
+        if (xie->mode == XINotifyGrab)
+          setFocus(false);
+        return;
+      }
+
+      atomic_store(&x11.lastWMEvent, microtime());
+      if (!x11.input.focused)
+        return;
+
+      if (xie->mode != XINotifyNormal &&
+          xie->mode != XINotifyWhileGrabbed &&
+          xie->mode != XINotifyGrab)
+        return;
+
+      setFocus(false);
+      return;
+    }
+
+    case XI_Enter:
+    {
+      atomic_store(&x11.lastWMEvent, microtime());
+      XIEnterEvent *xie = cookie->data;
+      x11InputPointerEnter(&x11.input, xie->event == x11.window,
+          xie->mode == XINotifyNormal, xie->event_x, xie->event_y);
+      return;
+    }
+
+    case XI_Leave:
+    {
+      atomic_store(&x11.lastWMEvent, microtime());
+      XILeaveEvent *xie = cookie->data;
+
+      if (!x11InputPointerLeave(&x11.input, xie->event == x11.window,
+          xie->mode != NotifyGrab, app_isCaptureMode()))
+        return;
+
+      /**
+       * Because there is a race with the pointer ungrab the enter event for the
+       * next window is sometimes sent with the mode NotifyUngrab, unfortunatly
+       * some window managers such as i3 will ignore these which breaks focus
+       * follows mouse mode. To correct this we generate and send a normal
+       * EnterNotify event.
+       */
+      int root_x, root_y, win_x, win_y;
+      Window root_win, child_win;
+      unsigned int mask;
+      XQueryPointer(x11.display, DefaultRootWindow(x11.display), &root_win,
+                  &child_win, &root_x, &root_y, &win_x, &win_y, &mask);
+
+      int target_x, target_y;
+      Window target_root;
+      XTranslateCoordinates(x11.display, DefaultRootWindow(x11.display),
+        child_win, root_x, root_y, &target_x, &target_y, &target_root);
+
+      XEvent event;
+      memset(&event, 0, sizeof(event));
+      event.type                  = EnterNotify;
+      event.xcrossing.serial      = 0;
+      event.xcrossing.send_event  = True;
+      event.xcrossing.display     = x11.display;
+      event.xcrossing.window      = child_win;
+      event.xcrossing.root        = root_win;
+      event.xcrossing.subwindow   = child_win;
+      event.xcrossing.time        = CurrentTime;
+      event.xcrossing.mode        = NotifyNormal;
+      event.xcrossing.detail      = NotifyNonlinear;
+      event.xcrossing.same_screen = True;
+      event.xcrossing.focus       = False;
+      event.xcrossing.x           = target_x;
+      event.xcrossing.y           = target_y;
+      event.xcrossing.x_root      = root_x;
+      event.xcrossing.y_root      = root_y;
+
+      XSendEvent(x11.display, child_win, True, EnterWindowMask, &event);
+      XFlush(x11.display);
+      return;
+    }
+
+    case XI_KeyPress:
+    {
+      XIDeviceEvent *device = cookie->data;
+      atomic_store(&x11.keyboardGroup, device->group.effective);
+      if (!x11InputKeyboardKey(&x11.input, device->detail,
+            x11.minKeycode, true, false))
+        return;
+
+      if (x11.xic && app_isOverlayMode())
+      {
+        char buffer[128];
+        KeySym sym;
+        Status status;
+        XKeyPressedEvent ev = {
+          .display = x11.display,
+          .window  = x11.window,
+          .type    = KeyPress,
+          .keycode = device->detail,
+          .state   = device->mods.effective,
+        };
+
+        const int count = Xutf8LookupString(x11.xic, &ev, buffer,
+            sizeof(buffer), &sym, &status);
+
+        if (status == XBufferOverflow || count >= sizeof(buffer))
+          DEBUG_WARN("Typing too many characters at once, ignoring");
+        else if (status == XLookupChars || status == XLookupBoth)
+        {
+          buffer[count] = '\0';
+          x11InputKeyboardText(&x11.input, buffer);
+        }
+      }
+
+      updateKeyState(device->detail, true);
+      return;
+    }
+
+    case XI_KeyRelease:
+    {
+      XIDeviceEvent *device = cookie->data;
+      if (!x11InputKeyboardKey(&x11.input, device->detail,
+            x11.minKeycode, false, false))
+        return;
+
+      updateKeyState(device->detail, false);
+      return;
+    }
+
+    case XI_RawKeyPress:
+    {
+      XIRawEvent *raw = cookie->data;
+      if (!x11InputKeyboardKey(&x11.input, raw->detail,
+            x11.minKeycode, true, true))
+        return;
+
+      updateKeyState(raw->detail, true);
+      return;
+    }
+
+    case XI_RawKeyRelease:
+    {
+      XIRawEvent *raw = cookie->data;
+      if (!x11InputKeyboardKey(&x11.input, raw->detail,
+            x11.minKeycode, false, true))
+        return;
+
+      updateKeyState(raw->detail, false);
+      return;
+    }
+
+    case XI_ButtonPress:
+    {
+      XIDeviceEvent *device = cookie->data;
+      x11InputPointerButton(&x11.input, device->detail, true, false);
+      return;
+    }
+
+    case XI_ButtonRelease:
+    {
+      XIDeviceEvent *device = cookie->data;
+      x11InputPointerButton(&x11.input, device->detail, false, false);
+      return;
+    }
+
+    case XI_RawButtonPress:
+    {
+      XIRawEvent *raw = cookie->data;
+      x11InputPointerButton(&x11.input, raw->detail, true, true);
+      return;
+    }
+
+    case XI_RawButtonRelease:
+    {
+      XIRawEvent *raw = cookie->data;
+      x11InputPointerButton(&x11.input, raw->detail, false, true);
+      return;
+    }
+
+    case XI_Motion:
+    {
+      XIDeviceEvent *device = cookie->data;
+      x11InputPointerMotion(&x11.input, device->event_x, device->event_y);
+      return;
+    }
+
+    case XI_RawMotion:
+    {
+      XIRawEvent *raw = cookie->data;
+      double raw_axis[2] = { 0 };
+      double axis[2] = { 0 };
+
+      /* select the active validators for the X & Y axis */
+      double *valuator = raw->valuators.values;
+      double *r_value  = raw->raw_values;
+      bool   has_axes  = false;
+      for(int i = 0; i < raw->valuators.mask_len * 8; ++i)
+      {
+        if (XIMaskIsSet(raw->valuators.mask, i))
+        {
+          if (i == x11.xValuator)
+          {
+            raw_axis[0] = *r_value;
+            axis    [0] = *valuator;
+            has_axes = true;
+          }
+          else if (i == x11.yValuator)
+          {
+            raw_axis[1] = *r_value;
+            axis    [1] = *valuator;
+            has_axes = true;
+          }
+
+          ++valuator;
+          ++r_value;
+        }
+      }
+
+      /* filter out events with no axis data */
+      if (!has_axes)
+        return;
+
+      x11InputRelativeMotion(&x11.input, axis[0], axis[1],
+          raw_axis[0], raw_axis[1]);
+      return;
+    }
+  }
+}
+
+#include <math.h>
+
+static void x11XPresentEvent(XGenericEventCookie *cookie)
+{
+  switch(cookie->evtype)
+  {
+    case PresentCompleteNotify:
+    {
+      XPresentCompleteNotifyEvent * e = cookie->data;
+      const uint64_t previousMsc = atomic_load(&x11.presentMsc);
+      const uint64_t previousUst = atomic_load(&x11.presentUst);
+      if (previousMsc && e->msc > previousMsc && e->ust > previousUst)
+      {
+        const uint64_t period =
+          (e->ust - previousUst) * 1000 / (e->msc - previousMsc);
+        if (period)
+          atomic_store(&x11.presentPeriod, period);
+      }
+      if (x11DoPresent(e->msc))
+        atomic_store_explicit(
+            &x11.presentDiscontinuity, true, memory_order_release);
+      atomic_store(&x11.presentMsc, e->msc);
+      atomic_store(&x11.presentUst, e->ust);
+      x11SignalFrame(LG_DS_WAIT_FRAME_CADENCE);
+      break;
+    }
+  }
+}
+
+static bool x11GetFramePeriod(uint64_t * period)
+{
+  const uint64_t value = atomic_load(&x11.nominalPeriod);
+  if (!value)
+    return false;
+
+  *period = value;
+  return true;
+}
+
+#ifdef ENABLE_EGL
+static EGLDisplay x11GetEGLDisplay(void)
+{
+  EGLDisplay ret;
+  const char *early_exts = eglQueryString(NULL, EGL_EXTENSIONS);
+
+  if (util_hasGLExt(early_exts, "EGL_KHR_platform_base") &&
+      g_egl_dynProcs.eglGetPlatformDisplay)
+  {
+    DEBUG_INFO("Using eglGetPlatformDisplay");
+    ret = g_egl_dynProcs.eglGetPlatformDisplay(EGL_PLATFORM_X11_KHR,
+        x11.display, NULL);
+  }
+  else if (util_hasGLExt(early_exts, "EGL_EXT_platform_base") &&
+      g_egl_dynProcs.eglGetPlatformDisplayEXT)
+  {
+    DEBUG_INFO("Using eglGetPlatformDisplayEXT");
+    ret = g_egl_dynProcs.eglGetPlatformDisplayEXT(EGL_PLATFORM_X11_KHR,
+        x11.display, NULL);
+  }
+  else
+  {
+    DEBUG_INFO("Using eglGetDisplay");
+    ret = eglGetDisplay(x11.display);
+  }
+
+  return ret;
+}
+
+static EGLNativeWindowType x11GetEGLNativeWindow(void)
+{
+  return (EGLNativeWindowType)x11.window;
+}
+
+static bool x11EGLSwapBuffers(EGLDisplay display, EGLSurface surface,
+    const struct Rect * damage, int count, uint64_t frameToken,
+    uint64_t * swapTime, bool * presentTracked)
+{
+  static struct SwapWithDamageData data = {0};
+  if (!data.init)
+    swapWithDamageInit(&data, display);
+
+  (void)frameToken;
+  *presentTracked       = false;
+  const uint64_t start  = nanotime();
+  const bool     result =
+    swapWithDamage(&data, display, surface, damage, count);
+  *swapTime = nanotime() - start;
+  return result;
+}
+#endif
+
+#ifdef ENABLE_OPENGL
+static LG_DSGLContext x11GLCreateContext(void)
+{
+  return (LG_DSGLContext)
+    glXCreateContext(x11.display, x11.visual, NULL, GL_TRUE);
+}
+
+static void x11GLDeleteContext(LG_DSGLContext context)
+{
+  glXDestroyContext(x11.display, (GLXContext)context);
+}
+
+static void x11GLMakeCurrent(LG_DSGLContext context)
+{
+  glXMakeCurrent(x11.display, x11.window, (GLXContext)context);
+}
+
+static void x11GLSetSwapInterval(int interval)
+{
+  static PFNGLXSWAPINTERVALEXTPROC glXSwapIntervalEXT = NULL;
+  if (!glXSwapIntervalEXT)
+  {
+    glXSwapIntervalEXT = (PFNGLXSWAPINTERVALEXTPROC) glXGetProcAddressARB(
+        (const GLubyte *) "glXSwapIntervalEXT");
+    if (!glXSwapIntervalEXT)
+      DEBUG_FATAL("Failed to load glXSwapIntervalEXT");
+  }
+  glXSwapIntervalEXT(x11.display, x11.window, interval);
+}
+
+static void x11GLSwapBuffers(void)
+{
+  glXSwapBuffers(x11.display, x11.window);
+}
+#endif
+
+static LG_DSWaitFrameResult x11WaitFrame(void)
+{
+  /* wait until we are woken up by the present event */
+  lgWaitEvent(x11.frameEvent, TIMEOUT_INFINITE);
+  LG_DSWaitFrameResult result = atomic_exchange_explicit(
+      &x11.frameEventFlags, LG_DS_WAIT_FRAME_NONE, memory_order_acquire);
+
+  /* Interrupts carry no new presentation timestamp and must not perturb the
+   * calibration state. */
+  if (!(result & LG_DS_WAIT_FRAME_CADENCE))
+    return result;
+
+#define WARMUP_TIME 3000000 //2s
+#define CALIBRATION_COUNT 400
+  const uint64_t ust = atomic_load(&x11.presentUst);
+  const uint64_t msc = atomic_load(&x11.presentMsc);
+  const bool discontinuity = atomic_exchange_explicit(
+      &x11.presentDiscontinuity, false, memory_order_acquire);
+
+  static bool     warmup = true;
+  static uint64_t expire = 0;
+  if (warmup)
+  {
+    if (!expire)
+    {
+      DEBUG_INFO("Warming up...");
+      expire = ust + WARMUP_TIME;
+    }
+
+    if (ust < expire)
+      return result;
+
+    warmup = false;
+    DEBUG_INFO("Warmup done, doing calibration...");
+  }
+
+  /* calibrate a delay to push our presentation time forward as far as
+   * possible without skipping frames */
+  static int      calibrate = 0;
+  static uint64_t lastts    = 0;
+  static uint64_t lastmsc   = 0;
+  static uint64_t delay     = 0;
+  static int      skipCount    = 0;
+  static uint64_t lastSkipTime = 0;
+
+  if (discontinuity)
+  {
+    // Do not turn a compositor recovery jump into a render-skip sample.
+    lastts       = ust;
+    lastmsc      = msc;
+    skipCount    = 0;
+    lastSkipTime = 0;
+    if (calibrate < CALIBRATION_COUNT)
+      result |= LG_DS_WAIT_FRAME_FORCE_RENDER;
+    return result;
+  }
+
+  uint64_t deltamsc = 0;
+  if (lastts)
+  {
+    uint64_t deltats = ust - lastts;
+    deltamsc = msc - lastmsc;
+
+    if (calibrate == 0)
+    {
+      if (!delay)
+        delay = deltats / 2;
+      else
+      {
+        /* increase the delay until we see a skip */
+        if (deltamsc < 2)
+          delay += 100;
+        else
+        {
+          delay -= 100;
+          ++calibrate;
+          deltamsc = 0;
+        }
+      }
+    }
+    else
+    {
+      if (calibrate < CALIBRATION_COUNT)
+      {
+        /* every skip we back off the delay */
+        if (deltamsc > 1)
+        {
+          /* prevent underflow */
+          if (delay - 100 < delay)
+          {
+            delay -= 100;
+            calibrate = 1;
+            deltamsc = 0;
+          }
+          else
+          {
+            /* if underflow, we are simply too slow, no delay */
+            delay = 0;
+            calibrate = CALIBRATION_COUNT;
+          }
+        }
+
+        /* if we have finished, print out the delay */
+        if (++calibrate == CALIBRATION_COUNT)
+        {
+          /* delays shorter then 1ms are unmaintainable */
+          if (delay < 1000)
+          {
+            delay = 0;
+            DEBUG_INFO("Calibration done, no delay required");
+          }
+          else
+            DEBUG_INFO("Calibration done, delay = %lu us", delay);
+        }
+      }
+    }
+  }
+
+  lastts  = ust;
+  lastmsc = msc;
+
+  /* adjustments if we are still seeing odd skips */
+  const uint64_t lastWMEvent = atomic_load(&x11.lastWMEvent);
+  const uint64_t eventDelta = ust > lastWMEvent ? ust - lastWMEvent : 0;
+
+  if (skipCount > 0 && ust - lastSkipTime > 1000000UL)
+    skipCount = 0;
+
+  if (delay > 0 && deltamsc > 1 && eventDelta > 1000000UL)
+  {
+    /* only adjust if the last skip was less then 1s ago */
+    const bool flag = ust - lastSkipTime < 1000000UL;
+    lastSkipTime = ust;
+
+    if (flag && ++skipCount > 10)
+    {
+      if (delay - 500 < delay)
+      {
+        delay -= 500;
+        DEBUG_INFO("Excessing skipping detected, reduced calibration delay to %lu us", delay);
+        skipCount = 0;
+      }
+      else
+      {
+        delay = 0;
+        DEBUG_WARN("Excessive skipping detected, calibration delay disabled");
+      }
+    }
+  }
+
+  if (delay)
+  {
+    struct timespec ts = { .tv_nsec = delay * 1000 };
+    while(nanosleep(&ts, &ts)) {};
+  }
+
+  /* force rendering until we have finished calibration so we can take into
+   * account how long it takes for the scene to render */
+  if (calibrate < CALIBRATION_COUNT)
+    result |= LG_DS_WAIT_FRAME_FORCE_RENDER;
+
+  return result;
+}
+
+static void x11StopWaitFrame(void)
+{
+  x11SignalFrame(LG_DS_WAIT_FRAME_INTERRUPTED);
+}
+
+static void x11GuestPointerUpdated(double x, double y, double localX, double localY)
+{
+  if (app_isCaptureMode() || !x11.input.entered)
+    return;
+
+  // avoid running too often
+  static uint64_t last_warp = 0;
+  uint64_t now = microtime();
+  if (now - last_warp < 10000)
+    return;
+  last_warp = now;
+
+  XIWarpPointer(
+      x11.display,
+      x11.pointerDev,
+      None,
+      x11.window,
+      0, 0, 0, 0,
+      localX, localY);
+
+  XSync(x11.display, False);
+}
+
+static void x11SetPointer(LG_DSPointer pointer)
+{
+  XDefineCursor(x11.display, x11.window, x11.cursors[pointer]);
+}
+
+static void x11PrintGrabError(const char * type, int dev, Status ret)
+{
+  const char * errStr;
+  switch(ret)
+  {
+    case AlreadyGrabbed : errStr = "AlreadyGrabbed" ; break;
+    case GrabNotViewable: errStr = "GrabNotViewable"; break;
+    case GrabFrozen     : errStr = "GrabFrozen"     ; break;
+    case GrabInvalidTime: errStr = "GrabInvalidTime"; break;
+    default:
+      errStr = "Unknown";
+      break;
+  }
+
+  DEBUG_ERROR("XIGrabDevice failed for %s dev %d with 0x%x (%s)",
+      type, dev, ret, errStr);
+
+}
+
+static bool x11GrabPointerLocked(void)
+{
+  if (x11InputIsPointerGrabbed(&x11.input))
+    return true;
+
+  unsigned char mask_bits[XIMaskLen(XI_LASTEVENT)] = { 0 };
+  XIEventMask mask = {
+    x11.pointerDev,
+    sizeof(mask_bits),
+    mask_bits
+  };
+
+  XISetMask(mask.mask, XI_RawButtonPress  );
+  XISetMask(mask.mask, XI_RawButtonRelease);
+  XISetMask(mask.mask, XI_RawMotion       );
+  XISetMask(mask.mask, XI_Motion          );
+  XISetMask(mask.mask, XI_Enter           );
+  XISetMask(mask.mask, XI_Leave           );
+
+  Status ret;
+  for(int retry = 0; retry < 10; ++retry)
+  {
+    ret = XIGrabDevice(
+      x11.display,
+      x11.pointerDev,
+      x11.window,
+      CurrentTime,
+      None,
+      XIGrabModeAsync,
+      XIGrabModeAsync,
+      XINoOwnerEvents,
+      &mask);
+
+    // on some WMs (i3) for an unknown reason the first grab attempt when
+    // switching to a desktop that has LG on it fails with GrabFrozen, however
+    // adding as short delay seems to resolve the issue.
+    if (ret == GrabFrozen && retry < 9)
+    {
+      usleep(100000);
+      continue;
+    }
+
+    break;
+  }
+
+  if (ret != Success)
+  {
+    x11PrintGrabError("pointer", x11.pointerDev, ret);
+    return false;
+  }
+
+  x11InputSetPointerGrabbed(&x11.input, true);
+  return true;
+}
+
+static void x11GrabPointer(void)
+{
+  LG_LOCK(x11.pointerLock);
+  x11GrabPointerLocked();
+  LG_UNLOCK(x11.pointerLock);
+}
+
+static void x11UngrabPointerLocked(void)
+{
+  if (!x11InputIsPointerGrabbed(&x11.input))
+  {
+    app_handleGrabEvent(false);
+    return;
+  }
+
+  XIUngrabDevice(x11.display, x11.pointerDev, CurrentTime);
+  XSync(x11.display, False);
+
+  x11InputSetPointerGrabbed(&x11.input, false);
+  app_handleGrabEvent(false);
+}
+
+static void x11UngrabPointer(void)
+{
+  LG_LOCK(x11.pointerLock);
+  atomic_store_explicit(&x11.captureActive, false, memory_order_release);
+  x11UngrabPointerLocked();
+  LG_UNLOCK(x11.pointerLock);
+}
+
+static bool x11IsPointerGrabbed(void)
+{
+  return x11InputIsPointerGrabbed(&x11.input);
+}
+
+static void x11CapturePointer(void)
+{
+  LG_LOCK(x11.pointerLock);
+  const bool active = x11GrabPointerLocked();
+  atomic_store_explicit(&x11.captureActive, active, memory_order_release);
+  LG_UNLOCK(x11.pointerLock);
+}
+
+static void x11UncapturePointer(void)
+{
+  LG_LOCK(x11.pointerLock);
+  atomic_store_explicit(&x11.captureActive, false, memory_order_release);
+  x11UngrabPointerLocked();
+  LG_UNLOCK(x11.pointerLock);
+}
+
+static bool x11IsPointerCaptured(void)
+{
+  return atomic_load_explicit(&x11.captureActive, memory_order_acquire);
+}
+
+static void x11GrabKeyboard(void)
+{
+  if (x11InputIsKeyboardGrabbed(&x11.input))
+    return;
+
+  unsigned char mask_bits[XIMaskLen (XI_LASTEVENT)] = { 0 };
+  XIEventMask mask = {
+    x11.keyboardDev,
+    sizeof(mask_bits),
+    mask_bits
+  };
+
+  XISetMask(mask.mask, XI_RawKeyPress  );
+  XISetMask(mask.mask, XI_RawKeyRelease);
+
+  Status ret = XIGrabDevice(
+      x11.display,
+      x11.keyboardDev,
+      x11.window,
+      CurrentTime,
+      None,
+      XIGrabModeAsync,
+      XIGrabModeAsync,
+      XINoOwnerEvents,
+      &mask);
+
+  if (ret != Success)
+  {
+    x11PrintGrabError("keyboard", x11.keyboardDev, ret);
+    return;
+  }
+
+  x11InputSetKeyboardGrabbed(&x11.input, true);
+}
+
+static void x11UngrabKeyboard(void)
+{
+  if (!x11InputIsKeyboardGrabbed(&x11.input))
+    return;
+
+  XIUngrabDevice(x11.display, x11.keyboardDev, CurrentTime);
+  XSync(x11.display, False);
+
+  x11InputSetKeyboardGrabbed(&x11.input, false);
+}
+
+static void x11WarpPointer(int x, int y, bool exiting)
+{
+  XIWarpPointer(
+      x11.display,
+      x11.pointerDev,
+      None,
+      x11.window,
+      0, 0, 0, 0,
+      x, y);
+
+  XSync(x11.display, False);
+}
+
+static void x11RealignPointer(void)
+{
+  app_handleMouseRelative(0.0, 0.0, 0.0, 0.0);
+}
+
+static bool x11IsValidPointerPos(int x, int y)
+{
+  int screens;
+  XineramaScreenInfo *xinerama = XineramaQueryScreens(x11.display, &screens);
+
+  if(!xinerama)
+    return true;
+
+  bool ret = false;
+  for(int i = 0; i < screens; ++i)
+    if (x >= xinerama[i].x_org && x < xinerama[i].x_org + xinerama[i].width &&
+        y >= xinerama[i].y_org && y < xinerama[i].y_org + xinerama[i].height)
+    {
+      ret = true;
+      break;
+    }
+
+  XFree(xinerama);
+  return ret;
+}
+
+static void x11RequestActivation(void)
+{
+  XEvent e =
+  {
+    .xclient = {
+      .type         = ClientMessage,
+      .send_event   = true,
+      .message_type = x11atoms._NET_WM_STATE,
+      .format       = 32,
+      .window       = x11.window,
+      .data.l       = {
+        _NET_WM_STATE_ADD,
+        x11atoms._NET_WM_STATE_DEMANDS_ATTENTION,
+        0
+      }
+    }
+  };
+
+  XSendEvent(x11.display, DefaultRootWindow(x11.display), False,
+      SubstructureNotifyMask | SubstructureRedirectMask, &e);
+}
+
+static void x11InhibitIdle(void)
+{
+  XScreenSaverSuspend(x11.display, true);
+}
+
+static void x11UninhibitIdle(void)
+{
+  XScreenSaverSuspend(x11.display, false);
+}
+
+static void x11Wait(unsigned int time)
+{
+  usleep(time * 1000U);
+}
+
+static void x11SetWindowSize(int w, int h)
+{
+  XResizeWindow(x11.display, x11.window, w, h);
+}
+
+static void x11SetFullscreen(bool fs)
+{
+  if (x11.fullscreen == fs)
+    return;
+
+  x11.wm->setFullscreen(fs);
+}
+
+static bool x11GetFullscreen(void)
+{
+  return x11.fullscreen;
+}
+
+static void x11Minimize(void)
+{
+  XIconifyWindow(x11.display, x11.window, XDefaultScreen(x11.display));
+}
+
+struct LG_DisplayServerOps LGDS_X11 =
+{
+  .name               = "X11",
+  .setup              = x11Setup,
+  .probe              = x11Probe,
+  .earlyInit          = x11EarlyInit,
+  .init               = x11Init,
+  .startup            = x11Startup,
+  .shutdown           = x11Shutdown,
+  .free               = x11Free,
+  .getProp            = x11GetProp,
+#ifdef ENABLE_EGL
+  .getEGLDisplay      = x11GetEGLDisplay,
+  .getEGLNativeWindow = x11GetEGLNativeWindow,
+  .eglSwapBuffers     = x11EGLSwapBuffers,
+#endif
+#ifdef ENABLE_OPENGL
+  .glCreateContext    = x11GLCreateContext,
+  .glDeleteContext    = x11GLDeleteContext,
+  .glMakeCurrent      = x11GLMakeCurrent,
+  .glSetSwapInterval  = x11GLSetSwapInterval,
+  .glSwapBuffers      = x11GLSwapBuffers,
+#endif
+  .waitFrame           = x11WaitFrame,
+  .stopWaitFrame       = x11StopWaitFrame,
+  .getFramePeriod      = x11GetFramePeriod,
+  .guestPointerUpdated = x11GuestPointerUpdated,
+  .setPointer          = x11SetPointer,
+  .grabPointer         = x11GrabPointer,
+  .ungrabPointer       = x11UngrabPointer,
+  .isPointerGrabbed    = x11IsPointerGrabbed,
+  .capturePointer      = x11CapturePointer,
+  .uncapturePointer    = x11UncapturePointer,
+  .isPointerCaptured   = x11IsPointerCaptured,
+  .getKeyLabel         = x11GetKeyLabel,
+  .grabKeyboard        = x11GrabKeyboard,
+  .ungrabKeyboard      = x11UngrabKeyboard,
+  .warpPointer         = x11WarpPointer,
+  .realignPointer      = x11RealignPointer,
+  .isValidPointerPos   = x11IsValidPointerPos,
+  .requestActivation   = x11RequestActivation,
+  .inhibitIdle         = x11InhibitIdle,
+  .uninhibitIdle       = x11UninhibitIdle,
+  .wait                = x11Wait,
+  .setWindowSize       = x11SetWindowSize,
+  .setFullscreen       = x11SetFullscreen,
+  .getFullscreen       = x11GetFullscreen,
+  .minimize            = x11Minimize,
+
+  .cbInit          = x11CBInit,
+  .cbNotice        = x11CBNotice,
+  .cbRelease       = x11CBRelease,
+  .cbRequest       = x11CBRequest,
+  .cbRequestReady  = x11CBRequestReady,
+  .cbRequestCancel = x11CBRequestCancel,
+};

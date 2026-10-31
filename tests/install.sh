@@ -37,12 +37,36 @@ cat > "$fixture/bin/ws" <<'BINARY'
 if [[ "$*" == --version ]]; then printf 'ws 0.1.0\n'; else exec bash "$WS_PACKAGE_FIXTURE" "$@"; fi
 BINARY
 chmod +x "$fixture/bin/ws"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture/bin/viewer"
+chmod +x "$fixture/bin/viewer"
 prefix="$fixture/prefix with spaces"
-install_app() { "$root/install.sh" --binary "$fixture/bin/ws" --prefix "$prefix" "$@"; }
+install_app() { "$root/install.sh" --binary "$fixture/bin/ws" --viewer "$fixture/bin/viewer" --prefix "$prefix" "$@"; }
 install_app --dry-run | jq -e '.applied == false and .environment == "local-install"' >/dev/null
 [[ ! -e "$prefix" && ! -e "$XDG_STATE_HOME" ]]
 install_app | jq -e '.applied == true' >/dev/null
 [[ "$("$prefix/bin/ws" --version)" == 'ws 0.1.0' ]]
+cmp "$fixture/bin/viewer" "$prefix/libexec/window-side/window-side-viewer"
+cmp "$root/third_party/looking-glass/LICENSE" "$prefix/share/licenses/window-side/looking-glass/LICENSE"
+# Protect a modified private viewer and preserve a linked viewer's source.
+printf 'user edit\n' >> "$prefix/libexec/window-side/window-side-viewer"
+if install_app >"$fixture/out" 2>"$fixture/error"; then echo 'Overwrote a modified viewer' >&2; exit 1; fi
+rg -q 'Existing unmanaged viewer' "$fixture/error"
+install_app --replace-existing >/dev/null
+cp "$fixture/bin/viewer" "$fixture/viewer-source"
+rm "$prefix/libexec/window-side/window-side-viewer"
+ln -s "$fixture/viewer-source" "$prefix/libexec/window-side/window-side-viewer"
+install_app --replace-existing >/dev/null
+[[ ! -L "$prefix/libexec/window-side/window-side-viewer" ]]
+cmp "$fixture/bin/viewer" "$fixture/viewer-source"
+# A copied viewer with unresolved runtime libraries must not report success.
+cat > "$fixture/bin/ldd" <<'LDD'
+#!/usr/bin/env bash
+case "$1" in *window-side-viewer) printf 'libviewer-fixture.so => not found\n' ;; esac
+LDD
+chmod +x "$fixture/bin/ldd"
+if install_app >"$fixture/out" 2>"$fixture/error"; then echo 'Accepted a viewer with missing libraries' >&2; exit 1; fi
+rg -q 'libviewer-fixture.so => not found' "$fixture/error"
+rm "$fixture/bin/ldd"
 for source in "$root"/icons/hicolor/*/apps/window-side.*; do
   cmp "$source" "$prefix/share/icons/${source#"$root/icons/"}"
 done
@@ -100,7 +124,7 @@ mv "$fixture/managed-icons" "$prefix/share/icons/hicolor/22x22"
 linked="$fixture/linked-prefix"
 mkdir -p "$linked" "$fixture/managed-bin"
 ln -s "$fixture/managed-bin" "$linked/bin"
-if "$root/install.sh" --binary "$fixture/bin/ws" --prefix "$linked" --replace-existing >"$fixture/out" 2>"$fixture/error"; then exit 1; fi
+if "$root/install.sh" --binary "$fixture/bin/ws" --viewer "$fixture/bin/viewer" --prefix "$linked" --replace-existing >"$fixture/out" 2>"$fixture/error"; then exit 1; fi
 [[ ! -e "$fixture/managed-bin/ws" ]]
 # Exercise every distro delegation and both privilege routes without host writes.
 for family in arch debian fedora; do
@@ -136,7 +160,7 @@ jq -e '.applied == false and .plugin.status == "would-ask"' "$fixture/result.jso
 # A declined interactive prompt is worded as a retry, never treated as permanent.
 printf 'declined\n' > "$XDG_STATE_HOME/window-side/install-plugin-choice"
 if command -v script >/dev/null; then
-  printf 'y\n' | script -qec "bash '$root/install.sh' --binary '$fixture/bin/ws' --prefix '$prefix'" /dev/null > "$fixture/prompt.txt"
+  printf 'y\n' | script -qec "bash '$root/install.sh' --binary '$fixture/bin/ws' --viewer '$fixture/bin/viewer' --prefix '$prefix'" /dev/null > "$fixture/prompt.txt"
   rg -q 'declined last time' "$fixture/prompt.txt"
   [[ "$(cat "$XDG_STATE_HOME/window-side/install-plugin-choice")" == installed ]]
 fi

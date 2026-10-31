@@ -1,0 +1,400 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+!define MUI_CUSTOMFUNCTION_GUIINIT customGUIInit
+!define MUI_CUSTOMFUNCTION_ABORT   customGUIAbort
+
+;Include
+!include "MUI2.nsh"
+!include "FileFunc.nsh"
+!include "LogicLib.nsh"
+!include "Sections.nsh"
+
+;Settings
+Name "Looking Glass (host)"
+OutFile "looking-glass-host-setup.exe"
+Unicode true
+RequestExecutionLevel admin
+ShowInstDetails "show"
+ShowUninstDetails "show"
+ManifestDPIAware true
+
+!ifndef BUILD_32BIT
+Target AMD64-Unicode
+InstallDir "$PROGRAMFILES\Looking Glass (host)"
+!else
+InstallDir "$PROGRAMFILES64\Looking Glass (host)"
+!endif
+
+!define MUI_ICON "icon.ico"
+!define MUI_UNICON "icon.ico"
+!define MUI_LICENSEPAGE_BUTTON "Agree"
+!define MUI_BGCOLOR "3c046c"
+!define MUI_TEXTCOLOR "ffffff"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${NSISDIR}\Contrib\Graphics\Wizard\nsis3-grey.bmp"
+!define /file VERSION "../../VERSION"
+
+!define MUI_WELCOMEPAGE_TEXT "\
+  You are about to install $(^Name) version ${VERSION}.$\n$\n\
+  When upgrading, you don't need to close your Looking Glass client, but should \
+  install the ${VERSION} client after installation is complete.$\n$\n\
+  Press Next to continue."
+
+;Install and uninstall pages
+!insertmacro MUI_PAGE_WELCOME
+
+Page custom IddWarningLoad IddWarningUnload
+
+!insertmacro MUI_PAGE_LICENSE "LICENSE.txt"
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_COMPONENTS
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "English"
+
+Var IDD_UNINST
+
+Function ShowHelpMessage
+  MessageBox MB_OK "\
+    Command line options:$\n\
+    /S - silent install (must be uppercase)$\n\
+    /D=path\to\install\folder - Change install directory$\n\
+       (Must be uppercase, the last option given and no quotes)$\r$\n$\n\
+    /startmenu - create start menu shortcut$\n\
+    /desktop - create desktop shortcut$\n\
+    /noservice - do not create a service to auto start and elevate the host"
+  Abort
+FunctionEnd
+
+Function .onInit
+
+  var /GLOBAL cmdLineParams
+  Push $R0
+  ${GetParameters} $cmdLineParams
+  ClearErrors
+
+  ${GetOptions} $cmdLineParams '/?' $R0
+  IfErrors +2 0
+  Call ShowHelpMessage
+
+  ${GetOptions} $cmdLineParams '/H' $R0
+  IfErrors +2 0
+  Call ShowHelpMessage
+
+  Pop $R0
+
+
+  Var /GLOBAL option_startMenu
+  Var /GLOBAL option_desktop
+  Var /GlOBAL option_noservice
+  StrCpy $option_startMenu     0
+  StrCpy $option_desktop       0
+  StrCpy $option_noservice     0
+
+!ifdef IVSHMEM
+  Var /GlOBAL option_driver
+  StrCpy $option_driver        0
+!endif
+
+  Push $R0
+
+  ${GetOptions} $cmdLineParams '/startmenu' $R0
+  IfErrors +2 0
+  StrCpy $option_startMenu 1
+
+  ${GetOptions} $cmdLineParams '/desktop' $R0
+  IfErrors +2 0
+  StrCpy $option_desktop 1
+
+  ${GetOptions} $cmdLineParams '/noservice' $R0
+  IfErrors +2 0
+  StrCpy $option_noservice 1
+
+!ifdef IVSHMEM
+  ${GetOptions} $cmdLineParams '/driver' $R0
+  IfErrors +2 0
+  StrCpy $option_driver 1
+!endif
+
+  Pop $R0
+
+FunctionEnd
+
+!macro StopLookingGlassService
+  ;Attempt to stop existing LG service only if it exists
+
+  nsExec::Exec 'sc.exe query "Looking Glass (host)"'
+  Pop $0 ; SC.exe error level
+
+  ${If} $0 == 0 ; If error level is 0, service exists
+    DetailPrint "Stop service: Looking Glass (host)"
+    nsExec::ExecToLog 'net.exe STOP "Looking Glass (host)"'
+  ${EndIf}
+
+!macroend
+
+;Install 
+!ifdef IVSHMEM
+Section "IVSHMEM Driver" Section0
+  StrCpy $option_driver 1
+SectionEnd
+
+Section "-IVSHMEM Driver"
+  ${If} $option_driver == 1
+    DetailPrint "Extracting IVSHMEM driver"
+    SetOutPath $INSTDIR
+    File ..\..\ivshmem\ivshmem.cat
+    File ..\..\ivshmem\ivshmem.inf
+    File ..\..\ivshmem\ivshmem.sys
+    File /nonfatal ..\..\ivshmem\ivshmem.pdb
+
+    DetailPrint "Installing IVSHMEM driver"
+    nsExec::ExecToLog '"$SYSDIR\pnputil.exe" /add-driver "$INSTDIR\ivshmem.inf" /install'
+  ${EndIf}
+SectionEnd
+!endif
+
+Section "-Install" Section1
+
+  !insertmacro StopLookingGlassService
+
+  SetOutPath $INSTDIR
+  File ..\..\looking-glass-host.exe
+  File /nonfatal ..\..\looking-glass-host.pdb
+  File LICENSE.txt
+  WriteUninstaller $INSTDIR\uninstaller.exe
+
+  ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
+  IntFmt $0 "0x%08X" $0
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "EstimatedSize" "$0"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "DisplayName" "Looking Glass (host)"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "UninstallString" "$\"$INSTDIR\uninstaller.exe$\""
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "QuietUninstallString" "$\"$INSTDIR\uninstaller.exe$\" /S"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "InstallLocation" "$INSTDIR"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "Publisher" "Geoffrey McRae"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "DisplayIcon" "$\"$INSTDIR\looking-glass-host.exe$\""
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "NoRepair" "1"
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "NoModify" "1"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)" \
+  "DisplayVersion" ${VERSION}
+
+SectionEnd
+
+Section /o "" Section7
+  DetailPrint "Uninstalling the Looking Glass IDD..."
+  nsExec::ExecToLog '$IDD_UNINST'
+
+  ; Wait for the IDD to relinquish the IVSHMEM, which takes time.
+  Sleep 5000
+SectionEnd
+
+Section "Looking Glass (host) Service" Section2
+
+  ${If} $option_noservice == 0
+    DetailPrint "Install service: Looking Glass (host)"
+    nsExec::Exec '"$INSTDIR\looking-glass-host.exe" UninstallService'
+    nsExec::ExecToLog '"$INSTDIR\looking-glass-host.exe" InstallService'
+  ${EndIf}
+
+SectionEnd
+
+Section /o "Desktop Shortcut" Section3
+  StrCpy $option_desktop 1
+SectionEnd
+
+Section "Start Menu Shortcut" Section4
+  StrCpy $option_startMenu 1
+SectionEnd
+
+Section "-Hidden Start Menu" Section5
+  SetShellVarContext all
+
+  ${If} $option_startMenu == 1
+    CreateDirectory "$APPDATA\Looking Glass (host)"
+    CreateDirectory "$SMPROGRAMS\Looking Glass (host)"
+    CreateShortCut "$SMPROGRAMS\Looking Glass (host)\Looking Glass (host).lnk" $INSTDIR\looking-glass-host.exe
+    CreateShortCut "$SMPROGRAMS\Looking Glass (host)\Looking Glass Logs.lnk" "$APPDATA\Looking Glass (host)"
+  ${EndIf}
+
+  ${If} $option_desktop == 1
+    CreateShortCut "$DESKTOP\Looking Glass (host).lnk" $INSTDIR\looking-glass-host.exe
+  ${EndIf}
+SectionEnd
+
+Section "Uninstall" Section6
+  SetShellVarContext all
+
+  !insertmacro StopLookingGlassService
+
+  DetailPrint "Uninstall service: Looking Glass (host)"
+  nsExec::ExecToLog '"$INSTDIR\looking-glass-host.exe" UninstallService'
+
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (host)"
+  Delete "$SMPROGRAMS\Looking Glass (host).lnk"
+  Delete "$DESKTOP\Looking Glass (host).lnk"
+  Delete "$INSTDIR\uninstaller.exe"
+  Delete "$INSTDIR\looking-glass-host.exe"
+  Delete "$INSTDIR\looking-glass-host.pdb"
+  Delete "$INSTDIR\ivshmem.cat"
+  Delete "$INSTDIR\ivshmem.inf"
+  Delete "$INSTDIR\ivshmem.sys"
+  Delete "$INSTDIR\ivshmem.pdb"
+  Delete "$INSTDIR\LICENSE.txt"
+
+  RMDir $INSTDIR
+SectionEnd
+
+Function customGUIInit
+  ClearErrors
+
+  SetRegView 64
+  ReadRegStr $IDD_UNINST HKLM \
+    "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (IDD)" \
+    "QuietUninstallString"
+  SetRegView lastused
+
+  IfErrors +1 +4
+
+  SetRegView 32
+  ReadRegStr $IDD_UNINST HKLM \
+    "Software\Microsoft\Windows\CurrentVersion\Uninstall\Looking Glass (IDD)" \
+    "QuietUninstallString"
+  SetRegView lastused
+
+  ${Unless} ${Errors}
+    SectionSetText  ${Section7} "Uninstall LG IDD"
+    SectionSetFlags ${Section7} ${SF_SELECTED}
+  ${EndUnless}
+FunctionEnd
+
+LangString IDD_WARN_TITLE ${LANG_ENGLISH} "Looking Glass Indirect Display Driver"
+LangString IDD_WARN_SUBTITLE ${LANG_ENGLISH} "Are you aware that it exists?"
+
+LangString IDD_NOTICE_1 ${LANG_ENGLISH} "\
+  Starting in Looking Glass B8 release candidates, a new Indirect Display Driver (IDD) is now available. \
+  Henceforth, this will be the primary way of acquiring video from Windows guests."
+
+LangString IDD_NOTICE_2 ${LANG_ENGLISH} "\
+  The IDD supports the following new features absent from the host application:$\n\
+  • Acting as a true display in Windows and rendering directly into shared memory, bypassing    \
+    any need for video capture and the associated overhead;$\n\
+  • Running without a display output or a dummy plug attached;$\n\
+  • Running on muxless laptops without hacky third-party IDDs;$\n\
+  • Automatically resizing the Windows desktop to match the client viewport;$\n\
+  • Acting as a display output for virtual machines without a GPU; and$\n\
+  • High Dynamic Range (HDR) support."
+
+LangString IDD_NOTICE_3 ${LANG_ENGLISH} "The host application is no longer recommended for users who can use the IDD."
+
+LangString IDD_NOTICE_4 ${LANG_ENGLISH} "Download the Looking Glass IDD here:"
+
+LangString IDD_NOTICE_5 ${LANG_ENGLISH} "\
+  Only continue installation if the IDD doesn't work or \
+  directed to do so by a developer."
+
+Var IS_IDD_PAGE
+
+Function IddWarningLoad
+  !insertmacro MUI_HEADER_TEXT $(IDD_WARN_TITLE) $(IDD_WARN_SUBTITLE)
+
+  nsDialogs::Create 1018
+  Pop $0
+  ${If} $0 == error
+      Abort
+  ${EndIf}
+
+  ${NSD_CreateLabel} 0 0 100% 20u $(IDD_NOTICE_1)
+  Pop $0
+
+  ${NSD_CreateLabel} 0 20u 100% 68u $(IDD_NOTICE_2)
+  Pop $0
+
+  ${NSD_CreateLabel} 0 88u 100% 12u $(IDD_NOTICE_3)
+  Pop $0
+
+  ${NSD_CreateLabel} 0 100u 100% 8u $(IDD_NOTICE_4)
+  Pop $0
+
+  ${NSD_CreateLink} 0 108u 100% 12u "https://looking-glass.io/downloads"
+  Pop $0
+  ${NSD_OnClick} $0 OpenDownload
+
+  ${NSD_CreateLabel} 0 120u 100% 12u $(IDD_NOTICE_5)
+  Pop $0
+  SetCtlColors $0 0xFF0000 transparent
+
+  GetDlgItem $0 $HWNDPARENT 1
+  SendMessage $0 ${WM_SETTEXT} "0" "STR:Continue"
+
+  GetDlgItem $0 $HWNDPARENT 2
+  SendMessage $0 ${WM_SETTEXT} "0" "STR:Use IDD"
+
+  StrCpy $IS_IDD_PAGE 1
+
+  nsDialogs::Show
+FunctionEnd
+
+Function IddWarningUnload
+  StrCpy $IS_IDD_PAGE 0
+FunctionEnd
+
+Function OpenDownload
+  ExecShell "open" "https://looking-glass.io/downloads"
+FunctionEnd
+
+Function customGUIAbort
+  ${If} $IS_IDD_PAGE == 1
+    Call OpenDownload
+  ${EndIf}
+FunctionEnd
+
+;Description text for selection of install items
+LangString DESC_Section0 ${LANG_ENGLISH} "\
+  Install the IVSHMEM driver. \
+  This driver is needed for Looking Glass to function. \
+  This will replace the driver if it is already installed."
+LangString DESC_Section1 ${LANG_ENGLISH} "Install Files into $INSTDIR"
+LangString DESC_Section2 ${LANG_ENGLISH} "Install service to automatically start Looking Glass (host)."
+LangString DESC_Section3 ${LANG_ENGLISH} "Create desktop shortcut icon."
+LangString DESC_Section4 ${LANG_ENGLISH} "Create start menu shortcut."
+LangString DESC_Section7 ${LANG_ENGLISH} "\
+  Uninstall the Looking Glass Indirect Display Driver (IDD), \
+  which is detected on this system."
+
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+!ifdef IVSHMEM
+  !insertmacro MUI_DESCRIPTION_TEXT ${Section0} $(DESC_Section0)
+!endif
+  !insertmacro MUI_DESCRIPTION_TEXT ${Section1} $(DESC_Section1)
+  !insertmacro MUI_DESCRIPTION_TEXT ${Section2} $(DESC_Section2)
+  !insertmacro MUI_DESCRIPTION_TEXT ${Section3} $(DESC_Section3)
+  !insertmacro MUI_DESCRIPTION_TEXT ${Section4} $(DESC_Section4)
+  !insertmacro MUI_DESCRIPTION_TEXT ${Section7} $(DESC_Section7)
+!insertmacro MUI_FUNCTION_DESCRIPTION_END

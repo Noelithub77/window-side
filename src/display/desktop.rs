@@ -65,10 +65,17 @@ fn processes(target: &Target) -> Vec<String> {
             let pid = entry.file_name().into_string().ok().filter(|pid| pid.chars().all(|c| c.is_ascii_digit()))?;
             let cmdline = fs::read(entry.path().join("cmdline")).ok()?;
             let args: Vec<_> = cmdline.split(|byte| *byte == 0).map(String::from_utf8_lossy).collect();
-            let program = args.first()?.rsplit('/').next().map(str::to_owned)?;
-            (program == target.program && target.name.is_none_or(|name| args.iter().any(|arg| arg == name))).then_some(pid)
+            let executable = fs::read_link(entry.path().join("exe")).ok();
+            (program_matches(executable.as_deref(), args.first()?, target.program)
+                && target.name.is_none_or(|name| args.iter().any(|arg| arg == name))).then_some(pid)
         })
         .collect()
+}
+
+fn program_matches(executable: Option<&std::path::Path>, command: &str, program: &str) -> bool {
+    // Looking Glass rewrites argv[0] to show its connection state.
+    executable.and_then(std::path::Path::file_name).is_some_and(|name| name == program)
+        || command.rsplit('/').next() == Some(program)
 }
 
 /// Highest refresh rate among the connected monitors, formatted as Windows expects (e.g. `165.003`).
@@ -80,4 +87,17 @@ pub fn refresh_rate() -> String {
         Desktop::Other => None,
     };
     format!("{:.3}", rate.filter(|rate| *rate > 0.0).unwrap_or(60.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn viewer_identity_survives_process_title_changes() {
+        assert!(program_matches(Some(Path::new("/private/window-side-viewer")), "Looking Glass Client B7-829", "window-side-viewer"));
+        assert!(!program_matches(Some(Path::new("/usr/bin/looking-glass-client")), "Looking Glass Client B7-829", "window-side-viewer"));
+        assert!(program_matches(None, "/usr/bin/virt-viewer", "virt-viewer"));
+    }
 }

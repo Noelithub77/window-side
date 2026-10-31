@@ -1,0 +1,433 @@
+﻿/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#include "CNotifyWindow.h"
+#include "CClipboardManager.h"
+#include "CConfigWindow.h"
+#include "Resources.h"
+#include <CDebug.h>
+#include <new>
+#include <windowsx.h>
+#include <strsafe.h>
+
+#define WM_NOTIFY_ICON         (WM_USER)
+#define WM_CLEAN_UP_CONFIG     (WM_USER+1)
+#define WM_NO_GPU              (WM_USER+2)
+#define WM_RESOLUTION_REJECTED (WM_USER+3)
+#define WM_RECOVERY_STATE      (WM_USER+4)
+
+#define ID_MENU_SHOW_LOG 3000
+#define ID_MENU_SHOW_CONFIG 3001
+
+#define ID_DISPLAY_CHECK_TIMER 1
+#define DISPLAY_SETTLE_DELAY   250
+#define DISPLAY_RETRY_DELAY    1000
+#define DISPLAY_CHECK_INTERVAL 5000
+
+ATOM CNotifyWindow::s_atom = 0;
+UINT CNotifyWindow::s_taskbarCreated = 0;
+
+namespace
+{
+  struct ResolutionRejectedNotification
+  {
+    uint32_t width;
+    uint32_t height;
+    uint32_t requiredSizeMiB;
+  };
+}
+
+bool CNotifyWindow::registerClass()
+{
+  s_taskbarCreated = RegisterWindowMessage(L"TaskbarCreated");
+  if (!s_taskbarCreated)
+    DEBUG_WARN_HR(GetLastError(), "RegisterWindowMessage(TaskbarCreated)");
+
+  WNDCLASSEX wx = {};
+  populateWindowClass(wx);
+  wx.lpszClassName = L"LookingGlassIddHelper";
+
+  s_atom = RegisterClassEx(&wx);
+  return s_atom;
+}
+
+CNotifyWindow::CNotifyWindow() : m_iconData({ 0 }), m_iconRegistered(false),
+  m_menu(CreatePopupMenu()), closeRequested(false), m_recoveryActive(false)
+{
+  CreateWindowEx(0, MAKEINTATOM(s_atom), NULL,
+    0, 0, 0, 0, 0, NULL, NULL, hInstance, this);
+
+  if (m_menu)
+  {
+    AppendMenu(m_menu, MF_STRING, ID_MENU_SHOW_LOG, L"Open log directory");
+    AppendMenu(m_menu, MF_STRING, ID_MENU_SHOW_CONFIG, L"Open configuration");
+  }
+}
+
+CNotifyWindow::~CNotifyWindow()
+{
+  DestroyMenu(m_menu);
+}
+
+LRESULT CNotifyWindow::handleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+  LRESULT clipboardResult;
+  if (m_clipboard && m_clipboard->HandleMessage(
+      uMsg, wParam, lParam, clipboardResult))
+    return clipboardResult;
+
+  switch (uMsg)
+  {
+  case WM_NOTIFY_ICON:
+    return onNotifyIcon(LOWORD(lParam), HIWORD(lParam), GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam));
+
+  case WM_CLEAN_UP_CONFIG:
+    if (m_config && !m_config->hwnd())
+    {
+      DEBUG_INFO("Config window closed");
+      m_config.reset();
+    }
+    return 0;
+
+  case WM_NO_GPU:
+  {
+    m_gpuNotificationQueued.store(false, std::memory_order_release);
+    const int status = m_pendingGPUStatus.exchange(
+      -1, std::memory_order_acq_rel);
+    if (status >= 0)
+      handleGPUNotification(status != 0);
+    queueGPUNotification();
+    return 0;
+  }
+
+  case WM_RESOLUTION_REJECTED:
+  {
+    std::unique_ptr<ResolutionRejectedNotification> notification(
+      reinterpret_cast<ResolutionRejectedNotification*>(lParam));
+    if (notification)
+      handleResolutionRejected(notification->width, notification->height,
+        notification->requiredSizeMiB);
+    return 0;
+  }
+
+  case WM_RECOVERY_STATE:
+    m_recoveryActive = wParam;
+    KillTimer(m_hwnd, ID_DISPLAY_CHECK_TIMER);
+    if (!m_recoveryActive)
+      scheduleDisplayCheck(DISPLAY_SETTLE_DELAY);
+    return 0;
+
+  case WM_DISPLAYCHANGE:
+    if (!m_recoveryActive)
+    {
+      scheduleDisplayCheck(DISPLAY_SETTLE_DELAY);
+    }
+    return 0;
+
+  case WM_TIMER:
+    switch (wParam)
+    {
+    case ID_DISPLAY_CHECK_TIMER:
+      KillTimer(m_hwnd, ID_DISPLAY_CHECK_TIMER);
+      if (m_recoveryActive)
+        break;
+      const bool success =
+        m_onEnsureOnlyDisplay && m_onEnsureOnlyDisplay();
+      if (success)
+      {
+        DEBUG_TRACE("Enforced Looking Glass as the only display");
+      }
+      else
+      {
+        DEBUG_WARN("Failed to ensure Looking Glass is the only display");
+      }
+      scheduleDisplayCheck(success ?
+        DISPLAY_CHECK_INTERVAL : DISPLAY_RETRY_DELAY);
+      break;
+    }
+    return 0;
+
+  default:
+    if (s_taskbarCreated && uMsg == s_taskbarCreated)
+    {
+      registerIcon();
+      return 0;
+    }
+    return CWindow::handleMessage(uMsg, wParam, lParam);
+  }
+}
+
+LRESULT CNotifyWindow::onCreate()
+{
+  // Allow explorer to send us this message to register the notification icon.
+  ChangeWindowMessageFilterEx(m_hwnd, s_taskbarCreated, MSGFLT_ALLOW, NULL);
+
+  registerIcon();
+  return 0;
+}
+
+LRESULT CNotifyWindow::onClose()
+{
+  if (closeRequested)
+    destroy();
+  return 0;
+}
+
+LRESULT CNotifyWindow::onDestroy()
+{
+  m_iconRegistered.store(false, std::memory_order_release);
+  if (m_clipboard)
+    m_clipboard->Shutdown();
+  KillTimer(m_hwnd, ID_DISPLAY_CHECK_TIMER);
+  Shell_NotifyIcon(NIM_DELETE, &m_iconData);
+  return 0;
+}
+
+LRESULT CNotifyWindow::onFinal()
+{
+  PostQuitMessage(0);
+  return CWindow::onFinal();
+}
+
+LRESULT CNotifyWindow::onNotifyIcon(UINT uEvent, WORD wIconId, int x, int y)
+{
+  switch (uEvent)
+  {
+  case WM_CONTEXTMENU:
+    SetForegroundWindow(m_hwnd);
+    switch (TrackPopupMenu(m_menu, TPM_RETURNCMD | TPM_NONOTIFY, x, y, 0, m_hwnd, NULL))
+    {
+    case ID_MENU_SHOW_LOG:
+    {
+      const std::wstring logDir =
+        CDebug::GetLogDir(CDebug::Location::ProgramData);
+      if (!logDir.empty())
+        ShellExecute(m_hwnd, L"open", logDir.c_str(), NULL, NULL, SW_NORMAL);
+      break;
+    }
+    case ID_MENU_SHOW_CONFIG:
+      DEBUG_INFO("Config window opened");
+      m_config.reset(new CConfigWindow());
+      m_config->onDestroy([this]() {
+        PostMessage(m_hwnd, WM_CLEAN_UP_CONFIG, 0, 0);
+      });
+      if (m_onSettingChange)
+        m_config->onSettingChange([this]() {
+          m_onSettingChange();
+          KillTimer(m_hwnd, ID_DISPLAY_CHECK_TIMER);
+          scheduleDisplayCheck(DISPLAY_SETTLE_DELAY);
+        });
+      ShowWindow(*m_config, SW_NORMAL);
+      break;
+    }
+    break;
+  }
+  return 0;
+}
+
+void CNotifyWindow::registerIcon()
+{
+  m_iconData.cbSize = sizeof m_iconData;
+  m_iconData.hWnd = m_hwnd;
+  m_iconData.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
+  m_iconData.uCallbackMessage = WM_NOTIFY_ICON;
+  m_iconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(ID_MAIN_ICON));
+  m_iconData.uVersion = NOTIFYICON_VERSION_4;
+  StringCbCopy(m_iconData.szTip, sizeof m_iconData.szTip, L"Looking Glass (IDD)");
+
+  if (!Shell_NotifyIcon(NIM_ADD, &m_iconData))
+  {
+    DEBUG_ERROR_HR(GetLastError(), "Shell_NotifyIcon(NIM_ADD)");
+    return;
+  }
+
+  m_iconRegistered.store(true, std::memory_order_release);
+  if (!Shell_NotifyIcon(NIM_SETVERSION, &m_iconData))
+    DEBUG_ERROR_HR(GetLastError(), "Shell_NotifyIcon(NIM_SETVERSION)");
+
+  queueGPUNotification();
+}
+
+void CNotifyWindow::setGPU(bool hasGPU)
+{
+  m_pendingGPUStatus.store(hasGPU ? 1 : 0, std::memory_order_release);
+  queueGPUNotification();
+}
+
+void CNotifyWindow::queueGPUNotification()
+{
+  if (!m_iconRegistered.load(std::memory_order_acquire) ||
+      m_pendingGPUStatus.load(std::memory_order_acquire) < 0 ||
+      m_gpuNotificationQueued.exchange(true, std::memory_order_acq_rel))
+    return;
+
+  if (!PostMessage(m_hwnd, WM_NO_GPU, 0, 0))
+  {
+    m_gpuNotificationQueued.store(false, std::memory_order_release);
+    DEBUG_ERROR_HR(GetLastError(), "Failed to queue GPU status notification");
+  }
+}
+
+void CNotifyWindow::handleGPUNotification(bool hasGPU)
+{
+  const bool notifyNoGPU = !hasGPU &&
+    (!m_gpuStatusKnown || m_hasGPU);
+  m_gpuStatusKnown = true;
+  m_hasGPU         = hasGPU;
+
+  StringCbCopy(m_iconData.szTip, sizeof m_iconData.szTip, hasGPU ?
+    L"Looking Glass (IDD) with GPU acceleration" :
+    L"Looking Glass (IDD) with software rendering");
+
+  if (hasGPU)
+    m_iconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(ID_GPU_ICON));
+  else
+    m_iconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(ID_NO_GPU_ICON));
+
+  if (!Shell_NotifyIcon(NIM_MODIFY, &m_iconData))
+  {
+    DEBUG_ERROR_HR(GetLastError(), "Shell_NotifyIcon(NIM_ADD)");
+    return;
+  }
+
+  if (hasGPU || !notifyNoGPU)
+    return;
+
+  CRegistrySettings settings;
+  LSTATUS error = settings.open();
+  if (error != ERROR_SUCCESS)
+    DEBUG_ERROR_HR(error, "Failed to load settings");
+
+  auto noGPU = settings.getNoGPU();
+  if (noGPU.has_value() && noGPU.value())
+    return;
+
+  NOTIFYICONDATA nid;
+  memcpy(&nid, &m_iconData, sizeof nid);
+
+  nid.uFlags = NIF_INFO | NIF_SHOWTIP;
+  nid.dwInfoFlags = NIIF_WARNING;
+  StringCbCopy(nid.szInfoTitle, sizeof nid.szInfoTitle, L"No GPU found!");
+  StringCbCopy(nid.szInfo, sizeof nid.szInfo,
+    L"GPU acceleration will not be available. "
+    L"Looking Glass will use software rendering.");
+
+  if (!Shell_NotifyIcon(NIM_MODIFY, &nid))
+    DEBUG_ERROR_HR(GetLastError(), "Shell_NotifyIcon(NIM_MODIFY)");
+}
+
+void CNotifyWindow::notifyResolutionRejected(uint32_t width, uint32_t height,
+  uint32_t requiredSizeMiB)
+{
+  auto notification = new (std::nothrow) ResolutionRejectedNotification
+    { width, height, requiredSizeMiB };
+  if (!notification)
+  {
+    DEBUG_ERROR("Failed to allocate resolution rejection notification");
+    return;
+  }
+
+  if (!PostMessage(m_hwnd, WM_RESOLUTION_REJECTED, 0,
+      reinterpret_cast<LPARAM>(notification)))
+  {
+    delete notification;
+    DEBUG_ERROR_HR(GetLastError(),
+      "Failed to queue resolution rejection notification");
+  }
+}
+
+void CNotifyWindow::setRecoveryMode(bool active)
+{
+  if (!PostMessage(m_hwnd, WM_RECOVERY_STATE, active, 0))
+    DEBUG_ERROR_HR(GetLastError(), "Failed to update recovery state");
+}
+
+bool CNotifyWindow::initClipboard(CClipboardChannel& channel)
+{
+  if (m_clipboard)
+    return true;
+  std::unique_ptr<CClipboardManager> clipboard(
+    new (std::nothrow) CClipboardManager(m_hwnd, channel));
+  if (!clipboard)
+    return false;
+  if (!clipboard->Initialize())
+    return false;
+  m_clipboard = std::move(clipboard);
+  return true;
+}
+
+void CNotifyWindow::handleResolutionRejected(uint32_t width, uint32_t height,
+  uint32_t requiredSizeMiB)
+{
+  NOTIFYICONDATA nid;
+  memcpy(&nid, &m_iconData, sizeof nid);
+
+  nid.uFlags = NIF_INFO | NIF_SHOWTIP;
+  nid.dwInfoFlags = NIIF_WARNING;
+  StringCbCopy(nid.szInfoTitle, sizeof nid.szInfoTitle,
+    L"Resolution change refused");
+  if (requiredSizeMiB)
+    StringCbPrintf(nid.szInfo, sizeof nid.szInfo,
+      L"The requested resolution %ux%u requires at least %u MiB of "
+      L"configured frame capacity.",
+      width, height, requiredSizeMiB);
+  else
+    StringCbPrintf(nid.szInfo, sizeof nid.szInfo,
+      L"The requested resolution %ux%u is not supported by the current "
+      L"configuration.", width, height);
+
+  if (!Shell_NotifyIcon(NIM_MODIFY, &nid))
+    DEBUG_ERROR_HR(GetLastError(), "Shell_NotifyIcon(NIM_MODIFY)");
+}
+
+HWND CNotifyWindow::hwndDialog()
+{
+  return m_config ? m_config->hwnd() : nullptr;
+}
+
+void CNotifyWindow::close()
+{
+  closeRequested = true;
+  PostMessage(m_hwnd, WM_CLOSE, 0, 0);
+}
+
+void CNotifyWindow::scheduleDisplayCheck(UINT delay)
+{
+  if (m_recoveryActive || !m_onEnsureOnlyDisplay)
+    return;
+
+  CRegistrySettings settings;
+  LSTATUS error = settings.open();
+  if (error != ERROR_SUCCESS)
+    DEBUG_ERROR_HR(error, "Failed to load settings");
+
+  auto exclusive = settings.getExclusiveMonitor();
+  if (!exclusive.has_value() || !exclusive.value())
+    return;
+
+  if (!SetTimer(m_hwnd, ID_DISPLAY_CHECK_TIMER, delay, NULL))
+    DEBUG_ERROR_HR(GetLastError(), "Failed to schedule primary display check");
+}
+
+void CNotifyWindow::onEnsureOnlyDisplay(std::function<bool()> func)
+{
+  m_onEnsureOnlyDisplay = std::move(func);
+  scheduleDisplayCheck(DISPLAY_SETTLE_DELAY);
+}

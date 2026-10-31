@@ -9,11 +9,14 @@ license=('GPL-2.0-or-later')
 depends=('glibc' 'gcc-libs' 'webkit2gtk-4.1' 'gtk3' 'openssl'
          'wayland' 'vulkan-icd-loader' 'libvirt' 'qemu-base' 'swtpm' 'dnsmasq'
          'edk2-ovmf' 'virt-viewer' 'libsecret' 'libisoburn' 'libarchive' 'udisks2'
-         'dosfstools' 'device-mapper' 'pciutils' 'polkit' 'curl' 'openssh')
-makedepends=('rust' 'base-devel' 'pkgconf' 'nodejs' 'pnpm')
+         'dosfstools' 'device-mapper' 'pciutils' 'polkit' 'curl' 'openssh'
+         'fontconfig' 'fuse3' 'libdecor' 'libxi' 'libxss' 'libxinerama'
+         'libxcursor' 'libxpresent' 'libxfixes' 'libxrandr' 'libxkbcommon'
+         'libglvnd' 'nettle' 'libusbredir' 'libpulse' 'libpipewire'
+         'libsamplerate' 'libunwind' 'elfutils' 'ttf-dejavu')
+makedepends=('rust' 'base-devel' 'pkgconf' 'nodejs' 'pnpm' 'cmake' 'wayland-protocols' 'spice-protocol' 'python')
 checkdepends=('jq' 'ripgrep' 'desktop-file-utils')
-optdepends=('looking-glass: GPU passthrough viewer; the IDD requires the matching client build'
-            'hyprland: focus the existing Windows viewer')
+optdepends=('hyprland: focus the existing Windows viewer')
 conflicts=('ws')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Generated from the reviewed tag archive by ./ops aur:prepare.
@@ -28,6 +31,7 @@ prepare() {
 build() {
   cd "$pkgname-$pkgver"
   pnpm -C ui build
+  bash scripts/looking-glass.sh build
   cargo build --release --frozen -j 2
 }
 
@@ -41,6 +45,7 @@ check() {
 package() {
   cd "$pkgname-$pkgver"
   install -Dm755 target/release/ws "$pkgdir/usr/bin/ws"
+  install -Dm755 target/libexec/window-side/window-side-viewer "$pkgdir/usr/libexec/window-side/window-side-viewer"
   install -Dm644 packaging/window-side.desktop "$pkgdir/usr/share/applications/window-side.desktop"
   mkdir -p "$pkgdir/usr/share/icons"
   cp -R icons/hicolor "$pkgdir/usr/share/icons/"
@@ -48,4 +53,5 @@ package() {
     gtk-update-icon-cache -f -t "$pkgdir/usr/share/icons/hicolor" || true
   fi
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/window-side/LICENSE"
+  install -Dm644 third_party/looking-glass/LICENSE "$pkgdir/usr/share/licenses/window-side/looking-glass/LICENSE"
 }

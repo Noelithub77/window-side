@@ -32,7 +32,7 @@ jobs:
           restore-keys: arch-pacman-
       - name: Install build and fixture tools
         run: |
-          pacman -Syu --noconfirm --needed git rust pkgconf webkit2gtk-4.1 gtk3 openssl nodejs pnpm jq ripgrep desktop-file-utils librsvg imagemagick
+          pacman -Syu --noconfirm --needed git rust pkgconf webkit2gtk-4.1 gtk3 openssl nodejs pnpm jq ripgrep desktop-file-utils librsvg imagemagick cmake python fontconfig fuse3 libdecor libxi libxss libxinerama libxcursor libxpresent libxfixes libxrandr libxkbcommon libglvnd nettle libusbredir libpulse libpipewire libsamplerate libunwind elfutils wayland-protocols spice-protocol
           pacman -Sc --noconfirm
       - name: Save installed pacman packages
         if: github.ref_type != 'tag' && steps.pacman.outputs.cache-hit != 'true'
@@ -83,6 +83,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           test "$TAG" = "v$(target/release/ws --version | cut -d ' ' -f 2)"
+          ./ops looking-glass:build
           ./ops release:package --output "$RUNNER_TEMP/window-side-release"
       - name: Upload release package
         if: github.ref_type == 'tag'

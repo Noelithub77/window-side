@@ -1,69 +1,59 @@
-# Looking Glass controls and overlay
+# Looking Glass controls and app ownership
 
-The machine previously used Home as Looking Glass's escape key, which coupled
-capture to menu shortcuts and prevented Home reaching Windows.
+## Decisions
 
 - **[chosen]** Insert toggles the overlay; left Ctrl+Alt toggles capture on the
-  first modifier release. Home remains an ordinary guest key.
-- Other keys cancel the capture chord, preserving Ctrl+Alt+Delete and normal
-  shortcuts. Right Alt stays available for AltGr. Guest modifiers are released
-  before capture changes; focus loss clears pending chord state.
-- Keep the installed B7-829-cdba29f2 protocol and Windows driver. Patch the Linux
-  client with opt-in settings and preserve the original behavior by default.
-- **[chosen]** Polish the existing overlay with rounded dark surfaces, mint accents, larger
-  spacing and Settings first. No new UI framework or dependency.
+  first modifier release. Home remains available to Windows. Other keys cancel
+  the capture chord; AltGr, repeats and focus-loss recovery have regression tests.
+- **[chosen]** Polish the existing controls: rounded dark surfaces, mint accents,
+  larger spacing and font, Settings first and a compact shortcut hint.
+- **[chosen]** Vendor the pinned source in this repository instead of maintaining
+  an external fork/submodule. `third_party/looking-glass/README.window-side.md`
+  records the official archive, SHA-256, upstream version and local changes.
+- Keep B7-829-cdba29f2 and its Windows IDD protocol. The Windows driver is unchanged.
+- The native client stays a separate process owned and installed by Window Side.
 
-`assets/looking-glass/controls.patch` applies to the checksum-pinned official
-source archive. `./ops looking-glass:build`, `looking-glass:test`,
-`looking-glass:install` and `looking-glass:status` provide reproducible builds,
-input regression checks, installation with backup, and read-only discovery.
-Installation does not restart the viewer or either operating system.
+## App and packaging
 
-Enable in the user's tracked Looking Glass `client.ini`:
+`./ops build`, `dev` and `release:build` build the vendored client into
+`target/libexec/window-side/window-side-viewer`. Normal installers copy it into
+`PREFIX/libexec/window-side/` and record its checksum in the install receipt.
+Unmanaged/modified viewers require explicit replacement and are backed up.
+The regular app installer is also used by `./ops looking-glass:install`.
 
-```ini
-[input]
-escapeKey=KEY_SCROLLLOCK
-overlayKey=KEY_INSERT
-ctrlAltCapture=yes
+The GPU Open and Launch paths resolve this exact private client from the app's
+installation prefix. They pass Insert, Ctrl+Alt, Scroll Lock as the advanced
+shortcut leader, the soft theme and font on the command line. No personal
+`client.ini` or system `looking-glass-client` is needed. A unique application ID
+and executable name keep focus/close operations scoped to Window Side's viewer.
+Missing clients and service launch failures return actionable errors.
 
-[win]
-softOverlay=yes
-uiFont=DejaVu Sans
-uiSize=16
-```
-
-Scroll Lock remains the leader for advanced shortcuts; tapping it does not
-toggle capture while `ctrlAltCapture` is enabled. Insert is reserved for the
-overlay. Esc closes it. Closing the overlay restores its earlier capture state.
-
-The patch retains upstream's GPL-2.0-or-later licensing. Source:
-[Looking Glass B7-829](https://looking-glass.io/artifact/B7-829/source).
-The framebuffer tests requiring GoogleTest and Weston can be disabled separately
-from input tests; the normal installed build has test support disabled.
+Release archives contain the viewer and complete corresponding source, including
+upstream and dependency licenses. Arch packaging builds that same source and
+records its dependencies. Source installs require the pinned upstream's build
+dependencies plus FUSE 3 headers; no build step downloads source or submodules.
+The installer checks for missing viewer runtime libraries and reports them.
 
 ## Verification
 
-- `./ops looking-glass:build` and `looking-glass:install` passed. Installation
-  compares the installed file with the built binary and retains the old client
-  under `~/.cache/window-side/looking-glass-backups/`.
-- `./ops looking-glass:test`: 73 input, keybinding, focus, mouse, display-server
-  routing and configuration tests passed, including four new keyboard cases.
-- `./ops check`: 52 Rust tests, Clippy, UI checks/build, CLI and installer
-  fixtures passed. Vite retains its existing large-chunk advisory.
-- OmaBox with the real Wayland/EGL renderer and synthetic test transport:
-  inspected the rounded dark overlay, Settings tab and shortcut hint. Insert
-  opened/closed the overlay and Esc closed it after reopening.
-- The isolated visual fixture linked upstream's existing
-  `client/tests/clipboard_files_stub.c` instead of the real clipboard file
-  implementation because OmaBox has no `/dev/fuse`. The normal installed
-  binary uses the real implementation and has test support disabled.
-- Dotfiles `status.sh --arch` reported 148 passes, four warnings and seven
-  unrelated symlink failures for existing Codex/T3, Zen/MIME and logind files.
-  The Looking Glass config remains linked to its tracked dotfiles source.
+- Original client changes: 73 input regressions and isolated Wayland/EGL overlay
+  inspection passed. Insert opened/closed the overlay and Esc closed it after
+  reopening. The visual fixture used upstream's clipboard file stub because
+  OmaBox has no `/dev/fuse`; normal builds retain the real implementation.
+- Vendored native build passed with test support disabled for the installed
+  viewer. `./ops check` passed 73 client tests, 56 Rust tests, Clippy, UI build
+  and the CLI, installer and release/package fixtures. Three new app tests
+  verify private viewer selection, argument boundaries/defaults and launch
+  error propagation. Another regression covers viewer identification after
+  Looking Glass changes its process title. All eight browser interaction tests
+  passed.
+- The normal installer installed the app and private viewer and recorded both
+  checksums; readback matched the build outputs. Installed client help confirmed
+  the app's options override a fixture config that still assigns Home.
+- Physical Windows input, native Windows boot, other Linux distributions and
+  published-release installation remain separate checks. No VM or host reboot
+  is required to install these changes. Reopen Window Side after updating.
 
-Artifacts are in `~/.cache/window-side/looking-glass-controls/`: input/check
-logs, installation metadata and `overlay-open.png`, `overlay-closed.png`,
-`overlay-esc-closed.png`. Synthetic desktop results do not establish physical
-Windows or keyboard behavior. An already running viewer must be reopened to
-load the new binary and configuration; Windows does not need a restart.
+Previous patch-build and screenshot artifacts remain under
+`~/.cache/window-side/looking-glass-controls/`; current build outputs are under
+`target/looking-glass/` and `target/libexec/window-side/`.

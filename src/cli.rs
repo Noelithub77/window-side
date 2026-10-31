@@ -300,7 +300,7 @@ pub fn run(action: Action) -> Result<i32> {
             sign_in_after_start(&config);
         }
         Action::Launch => {
-            require(if profile == Profile::Gpu { "looking-glass-client" } else { "virt-viewer" })?;
+            if profile == Profile::Gpu { looking_glass::client()?; } else { require("virt-viewer")?; }
             lifecycle::start(&config, profile)?;
             if profile != Profile::Gpu {
                 console::open(domain)?;

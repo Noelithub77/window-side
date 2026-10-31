@@ -20,10 +20,10 @@ Usage: ./ops <command>
   icons                 Regenerate tracked icons with rsvg-convert (dev only)
   icons:check           Reject stale generated icons
   check                 Run unit tests, Clippy and CLI/installer fixtures; no VM or desktop actions
-  looking-glass:build   Build the pinned client with optional overlay/capture controls
+  looking-glass:build   Build the vendored app-owned viewer
   looking-glass:test    Run client input regression tests with synthetic support
-  looking-glass:install Build, back up and replace the Linux client; no viewer restart
-  looking-glass:status  Show the client patch hash and build paths
+  looking-glass:install Build and install the private viewer; no viewer restart
+  looking-glass:status  Show the vendored source, build and viewer paths
   check:release         Run those checks against the optimized release
   ci:run [--release]    Dispatch CI on main and watch it; --release warms the release cache
   test:install          Check installer changes inside a temporary prefix
@@ -60,6 +60,7 @@ HELP
   icons) shift; exec bash "$root/scripts/icons.sh" "$@" ;;
   icons:check) shift; exec bash "$root/scripts/icons.sh" check "$@" ;;
   check)
+    "$root/ops" looking-glass:test
     "$root/ops" icons:check
     "$root/ops" ui:check
     cargo test -j 2
@@ -72,6 +73,7 @@ HELP
     exec bash "$root/tests/install.sh"
     ;;
   check:release)
+    "$root/ops" looking-glass:test
     "$root/ops" icons:check
     "$root/ops" ui:check
     cargo test --release --locked -j 2
@@ -85,12 +87,12 @@ HELP
     ;;
   ci:run) shift; exec bash "$root/scripts/ci-run.sh" "$@" ;;
   test:install) exec bash "$root/tests/install.sh" ;;
-  release:build) pnpm -C ui install --frozen-lockfile; pnpm -C ui build; exec cargo build --release --locked -j 2 ;;
+  release:build) "$root/ops" looking-glass:build; pnpm -C ui install --frozen-lockfile; pnpm -C ui build; exec cargo build --release --locked -j 2 ;;
   release:package) shift; exec bash "$root/scripts/package-release.sh" "$@" ;;
   aur:prepare) shift; exec bash "$root/scripts/prepare-aur.sh" "$@" ;;
   test:first-boot) exec bash "$root/tests/first-boot.sh" ;;
   guest:check) exec bash "$root/tests/guest-check.sh" ;;
-  build) pnpm -C ui build; exec cargo build -j 2 ;;
+  build) "$root/ops" looking-glass:build; pnpm -C ui build; exec cargo build -j 2 ;;
   dev) shift; exec "$root/scripts/dev.sh" "$@" ;;
   gui:test) shift; exec "$root/scripts/gui-test.sh" "$@" ;;
   gui:tray) shift; exec bash "$root/scripts/tray-test.sh" "$@" ;;

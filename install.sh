@@ -4,15 +4,16 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 prefix="${HOME:?}/.local"
 binary=''
+viewer=''
 replace=false
 dry_run=false
 yes=false
 no_plugin=false
 while (( $# )); do
   case "$1" in
-    --prefix|--binary)
+    --prefix|--binary|--viewer)
       (( $# >= 2 )) || { echo "Missing value for $1" >&2; exit 2; }
-      if [[ "$1" == --prefix ]]; then prefix=$2; else binary=$2; fi
+      case "$1" in --prefix) prefix=$2 ;; --binary) binary=$2 ;; --viewer) viewer=$2 ;; esac
       shift 2 ;;
     --replace-existing) replace=true; shift ;;
     --dry-run) dry_run=true; shift ;;
@@ -20,11 +21,13 @@ while (( $# )); do
     --no-plugin) no_plugin=true; shift ;;
     --help|-h)
       cat <<'HELP'
-Usage: ./install.sh [--binary FILE] [--prefix /absolute/path] [--replace-existing]
+Usage: ./install.sh [--binary FILE] [--viewer FILE] [--prefix /absolute/path] [--replace-existing]
                     [--yes] [--no-plugin] [--dry-run]
 
 Builds the locked Rust release when --binary is omitted, then installs or updates
-ws, its desktop entry and the VM packages for Arch, Ubuntu/Debian or Fedora.
+ws, its private Looking Glass viewer, desktop entry and VM packages.
+The viewer is built from third_party/looking-glass for source installs and
+included prebuilt in releases. --viewer supplies an already built client.
 Package installation uses the installed ws through pkexec or sudo. On Omarchy,
 asks whether to install or update the optional panel; declined/skipped panels
 are offered again next time. Machine configuration stays in ws setup.
@@ -42,7 +45,9 @@ HELP
 done
 [[ "$prefix" == /* && "$prefix" != / && "$prefix" != *[$'\n\r\t']* ]] || { echo 'Prefix must be an absolute directory without control characters' >&2; exit 2; }
 prefix=${prefix%/}
-[[ ! -L "$prefix/bin" && ! -L "$prefix/share/applications" ]] || { echo 'Installation directories must not be symlinks' >&2; exit 1; }
+for directory in "$prefix/bin" "$prefix/share/applications" "$prefix/libexec" "$prefix/libexec/window-side" "$prefix/share/licenses" "$prefix/share/licenses/window-side" "$prefix/share/licenses/window-side/looking-glass"; do
+  [[ ! -L "$directory" ]] || { echo 'Installation directories must not be symlinks' >&2; exit 1; }
+done
 if [[ -z "$binary" && -x "$root/ws" ]]; then binary="$root/ws"; fi
 if [[ -z "$binary" ]]; then
   binary="$root/target/release/ws"
@@ -56,6 +61,21 @@ if [[ -z "$binary" ]]; then
     fi
     (cd "$root"; pnpm -C ui install --frozen-lockfile; pnpm -C ui build; cargo build --release --locked -j 2) >&2
   fi
+fi
+if [[ -z "$viewer" ]]; then
+  if [[ -x "$root/libexec/window-side/window-side-viewer" ]]; then
+    viewer="$root/libexec/window-side/window-side-viewer"
+  else
+    viewer="$root/target/libexec/window-side/window-side-viewer"
+    if ! $dry_run; then bash "$root/scripts/looking-glass.sh" build >&2; fi
+  fi
+fi
+[[ "$viewer" != *[$'\n\r\t']* ]] || { echo 'Viewer path must not contain control characters' >&2; exit 2; }
+if [[ -e "$viewer" ]]; then
+  viewer=$(realpath -- "$viewer")
+  [[ -f "$viewer" && -x "$viewer" ]] || { echo 'The viewer must be an executable regular file' >&2; exit 1; }
+else
+  $dry_run || { echo "Viewer not found: $viewer" >&2; exit 1; }
 fi
 [[ "$binary" != *[$'\n\r\t']* ]] || { echo 'Binary path must not contain control characters' >&2; exit 2; }
 if [[ -e "$binary" ]]; then
@@ -85,7 +105,16 @@ if [[ -f "$receipt" && ! -L "$receipt" && -f "$prefix/bin/ws" && ! -L "$prefix/b
 fi
 icon_files=("$root"/icons/hicolor/*/apps/window-side.*)
 [[ -f "${icon_files[0]}" ]] || { echo 'Missing packaged icons/hicolor tree' >&2; exit 1; }
-files=(bin/ws share/applications/window-side.desktop share/licenses/window-side/LICENSE share/window-side/install-receipt)
+files=(bin/ws libexec/window-side/window-side-viewer share/applications/window-side.desktop share/licenses/window-side/LICENSE share/licenses/window-side/looking-glass/LICENSE share/window-side/install-receipt)
+installed_viewer="$prefix/libexec/window-side/window-side-viewer"
+if [[ -e "$installed_viewer" || -L "$installed_viewer" ]]; then
+  viewer_owned=false
+  if [[ -f "$installed_viewer" && ! -L "$installed_viewer" && -f "$receipt" ]]; then
+    previous_viewer=$(sha256sum -- "$installed_viewer"); previous_viewer=${previous_viewer%% *}
+    if grep -Fxq "viewer_sha256=$previous_viewer" "$receipt"; then viewer_owned=true; fi
+  fi
+  $viewer_owned || $replace || { echo 'Existing unmanaged viewer; use --replace-existing to back it up and replace it.' >&2; exit 1; }
+fi
 for source in "${icon_files[@]}"; do
   relative="share/icons/${source#"$root/icons/"}"
   files+=("$relative")
@@ -122,7 +151,7 @@ if ! $dry_run; then
       if [[ "$relative" == bin/ws && -L "$target" && -f "$target" ]]; then cp -L -- "$target" "$backup/ws-before"; fi
     fi
   done
-  mkdir -p -- "$prefix/bin" "$prefix/share/applications" "$prefix/share/licenses/window-side" "$prefix/share/window-side"
+  mkdir -p -- "$prefix/bin" "$prefix/libexec/window-side" "$prefix/share/applications" "$prefix/share/licenses/window-side/looking-glass" "$prefix/share/window-side"
   temporary=$(mktemp "$prefix/bin/.ws.XXXXXXXX")
   trap 'rm -f -- "${temporary:-}" "${desktop_temporary:-}" "${license_temporary:-}" "${receipt_temporary:-}" "${icon_temporary:-}"' EXIT
   install -m 755 -- "$binary" "$temporary"
@@ -138,11 +167,17 @@ if ! $dry_run; then
   chmod 644 "$desktop_temporary"
   if command -v desktop-file-validate >/dev/null; then desktop-file-validate "$desktop_temporary"; fi
   mv -Tf -- "$temporary" "$prefix/bin/ws"
+  temporary=$(mktemp "$prefix/libexec/window-side/.viewer.XXXXXXXX")
+  install -m 755 -- "$viewer" "$temporary"
+  mv -Tf -- "$temporary" "$installed_viewer"
   mv -Tf -- "$desktop_temporary" "$prefix/share/applications/window-side.desktop"
   # Replace license symlinks instead of writing through them.
   license_temporary=$(mktemp "$prefix/share/licenses/window-side/.license.XXXXXXXX")
   install -m 644 -- "$root/LICENSE" "$license_temporary"
   mv -Tf -- "$license_temporary" "$prefix/share/licenses/window-side/LICENSE"
+  license_temporary=$(mktemp "$prefix/share/licenses/window-side/looking-glass/.license.XXXXXXXX")
+  install -m 644 -- "$root/third_party/looking-glass/LICENSE" "$license_temporary"
+  mv -Tf -- "$license_temporary" "$prefix/share/licenses/window-side/looking-glass/LICENSE"
   for source in "${icon_files[@]}"; do
     target="$prefix/share/icons/${source#"$root/icons/"}"
     mkdir -p -- "$(dirname -- "$target")"
@@ -154,7 +189,8 @@ if ! $dry_run; then
     gtk-update-icon-cache -f -t "$prefix/share/icons/hicolor" >&2 || echo 'Installed; refreshing the optional icon cache failed' >&2
   fi
   receipt_temporary=$(mktemp "$prefix/share/window-side/.receipt.XXXXXXXX")
-  printf 'version=%s\nsha256=%s\n' "$version" "$digest" > "$receipt_temporary"
+  viewer_digest=$(sha256sum -- "$installed_viewer"); viewer_digest=${viewer_digest%% *}
+  printf 'version=%s\nsha256=%s\nviewer_sha256=%s\n' "$version" "$digest" "$viewer_digest" > "$receipt_temporary"
   mv -Tf -- "$receipt_temporary" "$receipt"
   if command -v update-desktop-database >/dev/null; then
     update-desktop-database "$prefix/share/applications" >&2 || echo 'Installed; refreshing the optional desktop cache failed' >&2
@@ -175,6 +211,13 @@ else
     echo 'ws was installed, but VM package setup failed. Rerun this command to retry.' >&2
     exit 1
   }
+  if command -v ldd >/dev/null; then
+    missing_libraries=$(ldd "$installed_viewer" 2>/dev/null | grep 'not found' || true)
+    if [[ -n "$missing_libraries" ]]; then
+      printf 'The viewer was installed, but runtime libraries are missing:\n%s\nSee third_party/looking-glass/doc/build.rst for this distro.\n' "$missing_libraries" >&2
+      exit 1
+    fi
+  fi
   if command -v omarchy >/dev/null; then
     choice_file="${XDG_STATE_HOME:-$HOME/.local/state}/window-side/install-plugin-choice"
     previous_choice=''
@@ -211,6 +254,7 @@ fi
 printf '{"environment":"local-install","applied":%s,"prefix":' "$(! $dry_run && echo true || echo false)"
 json_string "$prefix"
 printf ',"binary":'; json_string "$binary"
+printf ',"viewer":'; json_string "$installed_viewer"
 printf ',"version":'; json_string "$version"
 printf ',"backup":'; json_string "$backup"
 printf ',"packages":%s,"plugin":%s}\n' "$packages" "$plugin"

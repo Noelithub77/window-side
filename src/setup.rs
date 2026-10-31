@@ -10,7 +10,7 @@ use crate::detect::disks::WindowsInstall;
 use crate::detect::gpus::{Blocker, Gpu as DetectedGpu};
 use crate::detect::system::System;
 use crate::detect::{disks, gpus, system};
-use crate::process::{has_command, output, text};
+use crate::process::{output, text};
 use crate::vm::{lifecycle, virsh};
 use anyhow::{Context, Result, bail};
 use root::{FOOTER_SECTORS, HEADER_SECTORS, RootPlan, VirtualDisk};
@@ -204,8 +204,8 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
         if gpu.blocker == Some(Blocker::IommuOff) {
             notes.push("IOMMU turns on after the next reboot; the GPU is checked again then.".into());
         }
-        if !has_command("looking-glass-client") {
-            notes.push(format!("Install the Looking Glass client {} to see Windows on the GPU.", crate::display::looking_glass::TAG));
+        if crate::display::looking_glass::client().is_err() {
+            notes.push("Reinstall Window Side to restore its Windows viewer.".into());
         }
     }
     let virtual_disk = match install.mode {

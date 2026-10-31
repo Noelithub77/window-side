@@ -1,0 +1,376 @@
+/**
+ * PureSpice - A pure C implementation of the SPICE client protocol
+ * Copyright © 2017-2025 Geoffrey McRae <geoff@hostfission.com>
+ * https://github.com/gnif/PureSpice
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#include "log.h"
+#include "channel_main.h"
+#include "channel.h"
+#include "channel_usbredir.h"
+#include "agent.h"
+#include "messages.h"
+
+#include <stdlib.h>
+
+struct ChannelMain
+{
+  bool ready;
+
+  bool capAgentTokens;
+  bool capNameAndUUID;
+  bool hasName;
+  bool hasUUID;
+  bool hasList;
+};
+
+static struct ChannelMain cm = { 0 };
+
+void channelMain_setClientCaps(uint32_t * caps)
+{
+  MAIN_SET_CAPABILITY(caps, SPICE_MAIN_CAP_AGENT_CONNECTED_TOKENS);
+  MAIN_SET_CAPABILITY(caps, SPICE_MAIN_CAP_NAME_AND_UUID);
+
+  memset(&cm, 0, sizeof(cm));
+}
+
+void channelMain_setCaps(const uint32_t * common, int numCommon,
+    const uint32_t * channel, int numChannel)
+{
+  /* for whatever reason the spice server does not report that it supports these
+   * capabilities so we are just going to assume it does until the below PR is
+   * merged, or indefiniately if it's rejected.
+   * https://gitlab.freedesktop.org/spice/spice/-/merge_requests/198
+   */
+#if 0
+  cm.capAgentTokens = HAS_CAPABILITY(channel, numChannel,
+      SPICE_MAIN_CAP_AGENT_CONNECTED_TOKENS);
+  cm.capNameAndUUID = HAS_CAPABILITY(channel, numChannel,
+      SPICE_MAIN_CAP_NAME_AND_UUID);
+#else
+  (void) common;
+  (void) numCommon;
+  (void) channel;
+  (void) numChannel;
+  cm.capAgentTokens = true;
+  cm.capNameAndUUID = true;
+#endif
+}
+
+static void checkReady(void)
+{
+  if (cm.ready)
+    return;
+
+  if (cm.capNameAndUUID)
+  {
+    if (!cm.hasName || !cm.hasUUID)
+      return;
+  }
+
+  if (!cm.hasList)
+    return;
+
+  cm.ready = true;
+  if (g_ps.config.ready)
+    g_ps.config.ready();
+}
+
+static PS_STATUS onMessage_mainInit(struct PSChannel * channel)
+{
+  if (!channel_validatePayload(channel, sizeof(SpiceMsgMainInit), "MAIN_INIT"))
+    return PS_STATUS_ERROR;
+
+  channel->initDone = true;
+
+  SpiceMsgMainInit * msg = (SpiceMsgMainInit *)channel->buffer;
+  g_ps.sessionID = msg->session_id;
+  agent_setServerTokens(msg->agent_tokens);
+
+  if (msg->agent_connected)
+  {
+    PS_STATUS status;
+    if ((status = agent_connect()) != PS_STATUS_OK)
+    {
+      purespice_disconnect();
+      return status;
+    }
+  }
+
+  if (msg->current_mouse_mode != SPICE_MOUSE_MODE_CLIENT &&
+      !purespice_mouseMode(false))
+  {
+    PS_LOG_ERROR("Failed to set the initial mouse mode");
+    return PS_STATUS_ERROR;
+  }
+
+  void * packet = SPICE_RAW_PACKET(SPICE_MSGC_MAIN_ATTACH_CHANNELS, 0, 0);
+  if (!SPICE_SEND_PACKET(channel, packet))
+  {
+    purespice_disconnect();
+    PS_LOG_ERROR("Failed to write SPICE_MSGC_MAIN_ATTACH_CHANNELS");
+    return PS_STATUS_ERROR;
+  }
+
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_mainName(struct PSChannel * channel)
+{
+  if (!channel_validatePayload(channel, sizeof(SpiceMsgMainName), "MAIN_NAME"))
+    return PS_STATUS_ERROR;
+
+  SpiceMsgMainName * msg = (SpiceMsgMainName *)channel->buffer;
+  if (!channel_validateRange(
+        channel, sizeof(*msg), msg->name_len, "MAIN_NAME string"))
+    return PS_STATUS_ERROR;
+
+  char * name = malloc((size_t)msg->name_len + 1);
+  if (!name)
+  {
+    PS_LOG_ERROR("Failed to allocate the guest name");
+    return PS_STATUS_ERROR;
+  }
+
+  memcpy(name, msg->name, msg->name_len);
+  name[msg->name_len] = '\0';
+  PS_LOG_INFO("Guest name: %s", name);
+
+  if (g_ps.guestName)
+    free(g_ps.guestName);
+
+  g_ps.guestName = name;
+  cm.hasName = true;
+
+  checkReady();
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_mainUUID(struct PSChannel * channel)
+{
+  if (!channel_validatePayload(channel, sizeof(SpiceMsgMainUUID), "MAIN_UUID"))
+    return PS_STATUS_ERROR;
+
+  SpiceMsgMainUUID * msg = (SpiceMsgMainUUID *)channel->buffer;
+
+  PS_LOG_INFO("Guest UUID: "
+      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+      msg->uuid[ 0], msg->uuid[ 1], msg->uuid[ 2], msg->uuid[ 3], msg->uuid[ 4],
+      msg->uuid[ 5], msg->uuid[ 6], msg->uuid[ 7], msg->uuid[ 8], msg->uuid[ 9],
+      msg->uuid[10], msg->uuid[11], msg->uuid[12], msg->uuid[13], msg->uuid[14],
+      msg->uuid[15]);
+
+  memcpy(g_ps.guestUUID, msg->uuid, sizeof(g_ps.guestUUID));
+  cm.hasUUID = true;
+
+  checkReady();
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_mainChannelsList(struct PSChannel * channel)
+{
+  if (!channel_validatePayload(
+        channel, sizeof(SpiceMainChannelsList), "MAIN_CHANNELS_LIST"))
+    return PS_STATUS_ERROR;
+
+  SpiceMainChannelsList * msg = (SpiceMainChannelsList *)channel->buffer;
+  const size_t available = channel->header.size - sizeof(*msg);
+  if (msg->num_of_channels > available / sizeof(msg->channels[0]))
+  {
+    PS_LOG_ERROR("MAIN: channel list contains more entries than its payload");
+    return PS_STATUS_ERROR;
+  }
+
+  for(int n = 1; n < PS_CHANNEL_MAX; ++n)
+  {
+    struct PSChannel * ch = &g_ps.channels[n];
+    SpiceChannelID * match = NULL;
+    const bool bound =
+      atomic_load_explicit(&ch->available, memory_order_acquire) ||
+      atomic_load_explicit(&ch->connected, memory_order_acquire);
+
+    for(size_t i = 0; i < msg->num_of_channels; ++i)
+    {
+      SpiceChannelID * candidate = &msg->channels[i];
+      if (ch->spiceType != candidate->type)
+        continue;
+
+      if (!match)
+        match = candidate;
+
+      if (bound && ch->id == candidate->channel_id)
+      {
+        match = candidate;
+        break;
+      }
+    }
+
+    if (!match)
+    {
+      ps_unpublishChannel(ch);
+      continue;
+    }
+
+    PS_STATUS status = ps_bindChannel(ch, match->channel_id);
+    if (status != PS_STATUS_OK)
+    {
+      purespice_disconnect();
+      PS_LOG_ERROR("Failed to bind the %s channel", ch->name);
+      return status;
+    }
+  }
+
+  const PS_STATUS usbRedirStatus =
+    channelUSBRedir_reconcile(msg->channels, msg->num_of_channels);
+  if (usbRedirStatus != PS_STATUS_OK)
+  {
+    purespice_disconnect();
+    PS_LOG_ERROR("Failed to reconcile USB redirection channels");
+    return usbRedirStatus;
+  }
+
+  if (atomic_load_explicit(&g_ps.disconnectPending, memory_order_acquire))
+    return PS_STATUS_OK;
+
+  cm.hasList = true;
+  checkReady();
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_mainAgentConnected(struct PSChannel * channel)
+{
+  (void)channel;
+
+  PS_STATUS status;
+  if ((status = agent_connect()) != PS_STATUS_OK)
+  {
+    purespice_disconnect();
+    return status;
+  }
+
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_mainAgentConnectedTokens(struct PSChannel * channel)
+{
+  if (!channel_validatePayload(
+        channel, sizeof(uint32_t), "MAIN_AGENT_CONNECTED_TOKENS"))
+    return PS_STATUS_ERROR;
+
+  uint32_t num_tokens = *(uint32_t *)channel->buffer;
+
+  agent_setServerTokens(num_tokens);
+  return onMessage_mainAgentConnected(channel);
+}
+
+static PS_STATUS onMessage_mainAgentDisconnected(struct PSChannel * channel)
+{
+  if (!channel_validatePayload(
+        channel, sizeof(uint32_t), "MAIN_AGENT_DISCONNECTED"))
+    return PS_STATUS_ERROR;
+
+  uint32_t error = *(uint32_t *)channel->buffer;
+
+  agent_disconnect(true);
+  PS_LOG_WARN("Disconnected from the spice guest agent: %u", error);
+  return PS_STATUS_OK;
+}
+
+static PS_STATUS onMessage_mainAgentData(struct PSChannel * channel)
+{
+  PS_STATUS status;
+  if ((status = agent_process(channel)) != PS_STATUS_OK)
+  {
+    PS_LOG_ERROR("Failed to process agent data");
+    purespice_disconnect();
+  }
+
+  return status;
+}
+
+static PS_STATUS onMessage_mainAgentToken(struct PSChannel * channel)
+{
+  if (!channel_validatePayload(channel, sizeof(uint32_t), "MAIN_AGENT_TOKEN"))
+    return PS_STATUS_ERROR;
+
+  uint32_t num_tokens = *(uint32_t *)channel->buffer;
+
+  agent_returnServerTokens(num_tokens);
+  if (!agent_processQueue())
+  {
+    purespice_disconnect();
+    PS_LOG_ERROR("Failed to process the agent queue");
+    return PS_STATUS_ERROR;
+  }
+
+  return PS_STATUS_OK;
+}
+
+PSHandlerFn channelMain_onMessage(struct PSChannel * channel)
+{
+  if (!channel->initDone)
+  {
+    if (channel->header.type == SPICE_MSG_MAIN_INIT)
+      return onMessage_mainInit;
+
+    purespice_disconnect();
+    PS_LOG_ERROR("Expected SPICE_MSG_MAIN_INIT but got %d", channel->header.type);
+    return PS_HANDLER_ERROR;
+  }
+
+  switch(channel->header.type)
+  {
+    case SPICE_MSG_MAIN_INIT:
+      purespice_disconnect();
+      PS_LOG_ERROR("Unexpected SPICE_MSG_MAIN_INIT");
+      return PS_HANDLER_ERROR;
+
+    case SPICE_MSG_MAIN_NAME:
+      return onMessage_mainName;
+
+    case SPICE_MSG_MAIN_UUID:
+      return onMessage_mainUUID;
+
+    case SPICE_MSG_MAIN_CHANNELS_LIST:
+      return onMessage_mainChannelsList;
+
+    case SPICE_MSG_MAIN_MOUSE_MODE:
+      return PS_HANDLER_DISCARD;
+
+    case SPICE_MSG_MAIN_MULTI_MEDIA_TIME:
+      return PS_HANDLER_DISCARD;
+
+    case SPICE_MSG_MAIN_AGENT_CONNECTED:
+      return onMessage_mainAgentConnected;
+
+    case SPICE_MSG_MAIN_AGENT_CONNECTED_TOKENS:
+      return onMessage_mainAgentConnectedTokens;
+
+    case SPICE_MSG_MAIN_AGENT_DISCONNECTED:
+      return onMessage_mainAgentDisconnected;
+
+    case SPICE_MSG_MAIN_AGENT_DATA:
+      if (!agent_present())
+        return PS_HANDLER_DISCARD;
+      return onMessage_mainAgentData;
+
+    case SPICE_MSG_MAIN_AGENT_TOKEN:
+      return onMessage_mainAgentToken;
+  }
+
+  return PS_HANDLER_ERROR;
+}

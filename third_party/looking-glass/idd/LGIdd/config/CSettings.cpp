@@ -1,0 +1,346 @@
+﻿/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#include "config/CSettings.h"
+#include "CDebug.h"
+#include "DefaultDisplayModes.h"
+#include "RefreshRate.h"
+
+#include <wdf.h>
+
+CSettings g_settings;
+
+CSettings::CSettings()
+{
+}
+
+CSettings::DisplayModes CSettings::LoadModes()
+{
+  const unsigned defaultRefresh100uHz = GetDefaultRefresh100uHz();
+  DisplayModes displayModes;
+
+  bool hasPreferred = false;
+  DisplayMode m;
+  if (GetExtraMode(m))
+  {
+    const std::wstring refresh = LGFormatRefreshRate(m.refresh100uHz);
+    DEBUG_INFO("ExtraMode: %ux%u@%ls%s", m.width, m.height,
+      refresh.c_str(), m.preferred ? "*" : "");
+    displayModes.push_back(m);
+    hasPreferred = m.preferred;
+  }
+
+  std::vector<std::wstring> entries;
+  if (!ReadModesValue(entries))
+  {
+    displayModes.reserve(displayModes.size() +
+      ARRAYSIZE(DefaultDisplayModes));
+
+    for (int i = 0; i < ARRAYSIZE(DefaultDisplayModes); ++i)
+    {
+      m.width          = DefaultDisplayModes[i][0];
+      m.height         = DefaultDisplayModes[i][1];
+      m.refresh100uHz = defaultRefresh100uHz;
+      m.preferred      = !hasPreferred &&
+        (i == DefaultPreferredDisplayMode);
+      m.extraMode      = false;
+      displayModes.push_back(m);
+    }
+    return displayModes;
+  }
+
+  for (const auto& line : entries)
+    if (ParseModeString(line, m))
+    {
+      if (hasPreferred)
+        m.preferred = false;
+      displayModes.push_back(m);
+    }
+
+  DEBUG_INFO("Parsed %d modes", displayModes.size());
+  return displayModes;
+}
+
+TransportInstances CSettings::LoadTransportInstances() const
+{
+  std::vector<std::wstring> entries;
+  if (!ReadMultiStringValue(L"TransportInstances", entries))
+    return DefaultTransportInstances();
+
+  TransportInstances instances;
+  if (!ParseTransportInstances(entries, instances))
+  {
+    DEBUG_WARN("Invalid transport instance configuration; using defaults");
+    return DefaultTransportInstances();
+  }
+  return instances;
+}
+
+bool CSettings::SetExtraMode(const DisplayMode& mode)
+{
+  WCHAR buf[64];
+  const std::wstring refresh = LGFormatRefreshRate(mode.refresh100uHz);
+  _snwprintf_s(buf, _countof(buf), _TRUNCATE, L"%ux%u@%ls%s",
+    mode.width, mode.height, refresh.c_str(),
+    mode.preferred ? L"*" : L"");
+
+  HKEY  hKey = NULL;
+  DWORD disp = 0;
+  LONG  ec = RegCreateKeyExW(
+    HKEY_LOCAL_MACHINE,
+    RegistryKey(),
+    0, NULL, REG_OPTION_NON_VOLATILE,
+    KEY_SET_VALUE,
+    NULL, &hKey, &disp);
+
+  if (ec != ERROR_SUCCESS)
+  {
+    DEBUG_ERROR_HR(ec, "Failed to open settings key for ExtraMode");
+    return false;
+  }
+
+  const WCHAR* valueName = L"ExtraMode";
+  const DWORD  cb = (DWORD)((wcslen(buf) + 1) * sizeof(WCHAR));
+
+  ec = RegSetValueExW(hKey, valueName, 0, REG_SZ,
+    (const BYTE*)buf, cb);
+  RegCloseKey(hKey);
+
+  if (ec != ERROR_SUCCESS)
+  {
+    DEBUG_ERROR_HR(ec, "Failed to write ExtraMode");
+    return false;
+  }
+
+  return true;
+}
+
+std::wstring CSettings::ReadStringValue(const wchar_t* name, const wchar_t* defaultValue)
+{
+  if (!defaultValue)
+    defaultValue = L"";
+
+  HKEY hKey = nullptr;
+  LONG ec = RegOpenKeyExW(
+    HKEY_LOCAL_MACHINE,
+    RegistryKey(),
+    0,
+    KEY_QUERY_VALUE,
+    &hKey
+  );
+
+  if (ec != ERROR_SUCCESS)
+    return std::wstring(defaultValue);
+
+  DWORD type = 0;
+  DWORD cb = 0;
+
+  ec = RegQueryValueExW(hKey, name, nullptr, &type, nullptr, &cb);
+  if (ec != ERROR_SUCCESS ||
+    (type != REG_SZ && type != REG_EXPAND_SZ) ||
+    cb == 0 ||
+    (cb % sizeof(wchar_t)) != 0)
+  {
+    RegCloseKey(hKey);
+    return std::wstring(defaultValue);
+  }
+
+  std::vector<wchar_t> buf((cb / sizeof(wchar_t)) + 1, L'\0');
+
+  DWORD type2 = 0;
+  DWORD cb2 = cb;
+
+  ec = RegQueryValueExW(
+    hKey,
+    name,
+    nullptr,
+    &type2,
+    reinterpret_cast<LPBYTE>(buf.data()),
+    &cb2
+  );
+
+  RegCloseKey(hKey);
+
+  if (ec != ERROR_SUCCESS || (type2 != REG_SZ && type2 != REG_EXPAND_SZ) ||
+    cb2 == 0 || (cb2 % sizeof(wchar_t)) != 0 || cb2 > cb)
+    return std::wstring(defaultValue);
+
+  buf[cb2 / sizeof(wchar_t)] = L'\0';
+  return std::wstring(buf.data());
+}
+
+bool CSettings::GetExtraMode(DisplayMode& mode)
+{
+  std::wstring extraMode = ReadStringValue(L"ExtraMode", NULL);
+  if (extraMode.empty())
+    return false;
+
+  if (!ParseModeString(extraMode, mode))
+    return false;
+
+  mode.extraMode = true;
+  return true;
+}
+
+unsigned CSettings::GetDefaultRefresh100uHz() const
+{
+  HKEY hKey = nullptr;
+  LONG status = RegOpenKeyExW(
+    HKEY_LOCAL_MACHINE, RegistryKey(), 0, KEY_QUERY_VALUE, &hKey);
+  if (status != ERROR_SUCCESS)
+    return 60 * LG_REFRESH_RATE_SCALE;
+
+  DWORD type = 0;
+  DWORD size = 0;
+  status = RegQueryValueExW(
+    hKey, L"DefaultRefresh", nullptr, &type, nullptr, &size);
+  if (status != ERROR_SUCCESS)
+  {
+    RegCloseKey(hKey);
+    return 60 * LG_REFRESH_RATE_SCALE;
+  }
+
+  unsigned refresh100uHz = 0;
+  if (type == REG_DWORD && size == sizeof(DWORD))
+  {
+    DWORD refresh = 0;
+    status = RegQueryValueExW(hKey, L"DefaultRefresh", nullptr, &type,
+      (LPBYTE)&refresh, &size);
+    if (status == ERROR_SUCCESS && refresh >= 24 && refresh <= 1000)
+      refresh100uHz = refresh * LG_REFRESH_RATE_SCALE;
+  }
+  else if ((type == REG_SZ || type == REG_EXPAND_SZ) && size &&
+      size % sizeof(wchar_t) == 0)
+  {
+    std::vector<wchar_t> value(size / sizeof(wchar_t) + 1, L'\0');
+    status = RegQueryValueExW(hKey, L"DefaultRefresh", nullptr, &type,
+      (LPBYTE)value.data(), &size);
+    if (status == ERROR_SUCCESS)
+      LGParseRefreshRate(value.data(), refresh100uHz);
+  }
+
+  RegCloseKey(hKey);
+  return refresh100uHz ? refresh100uHz : 60 * LG_REFRESH_RATE_SCALE;
+}
+
+bool CSettings::ReadMultiStringValue(const wchar_t * name,
+  std::vector<std::wstring>& out) const
+{
+  HKEY hKey = nullptr;
+  LONG st   = RegOpenKeyExW(
+    HKEY_LOCAL_MACHINE, RegistryKey(), 0, KEY_QUERY_VALUE, &hKey);
+  if (st != ERROR_SUCCESS)
+    return false;
+
+  DWORD type = 0, cb = 0;
+  st = RegGetValueW(hKey, nullptr, name, RRF_RT_REG_MULTI_SZ,
+    &type, nullptr, &cb);
+  if (st != ERROR_SUCCESS || cb == 0)  
+  {
+    RegCloseKey(hKey);
+    return false;
+  }
+
+  const DWORD capacity = cb;
+  std::vector<wchar_t> buf(
+    capacity / sizeof(wchar_t) + 2, L'\0');
+  st = RegGetValueW(hKey, nullptr, name, RRF_RT_REG_MULTI_SZ,
+    &type, buf.data(), &cb);
+  RegCloseKey(hKey);
+  if (st != ERROR_SUCCESS || cb > capacity || cb % sizeof(wchar_t))
+    return false;
+
+  const size_t length = cb / sizeof(wchar_t);
+  size_t begin = 0;
+  while (begin < length && buf[begin])
+  {
+    size_t end = begin;
+    while (end < length && buf[end])
+      ++end;
+    if (end == length)
+      return false;
+    out.emplace_back(buf.data() + begin, end - begin);
+    begin = end + 1;
+  }
+
+  return !out.empty();
+}
+
+bool CSettings::ReadModesValue(std::vector<std::wstring> &out) const
+{
+  return ReadMultiStringValue(L"Modes", out);
+}
+
+static std::wstring trim(const std::wstring &s)
+{
+  size_t b = 0, e = s.size();
+  while (b < e && iswspace(s[b]))
+    ++b;
+  while (e > b && iswspace(s[e - 1]))
+    --e;
+  return s.substr(b, e - b);
+}
+
+static bool toUnsigned(const std::wstring &t, unsigned &v)
+{
+  if (t.empty())
+    return false;
+
+  wchar_t* end = nullptr;
+  unsigned long tmp = wcstoul(t.c_str(), &end, 10);
+
+  if (!end || *end != L'\0')
+    return false;
+
+  v = (unsigned)tmp;
+  return true;
+}
+
+bool CSettings::ParseModeString(const std::wstring& in, DisplayMode& out)
+{
+  std::wstring s = trim(in);
+  if (s.empty())
+    return false;
+
+  out.preferred = s[s.size() - 1] == L'*';
+  if (out.preferred)
+    s = trim(s.substr(0, s.size() - 1));
+
+  size_t xPos  = s.find(L'x');
+  size_t atPos = s.find(L'@', (xPos == std::wstring::npos ? 0 : xPos + 1));
+  if (xPos == std::wstring::npos || atPos == std::wstring::npos ||
+    xPos == 0 || atPos <= xPos + 1 || atPos + 1 >= s.size())
+    return false;
+
+  if (!toUnsigned(s.substr(0, xPos), out.width) ||
+      !toUnsigned(s.substr(xPos + 1, atPos - (xPos + 1)), out.height) ||
+      !LGParseRefreshRate(s.substr(atPos + 1), out.refresh100uHz))
+      return false;
+
+  // sanity check
+  if (out.width   < 640   ||
+      out.height  < 480   ||
+      out.width   > 16384 ||
+      out.height  > 16384)
+    return false;
+
+  out.extraMode = false;
+  return true;
+}

@@ -1,0 +1,86 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#pragma once
+
+#include "CSRWLock.h"
+
+#include "transport/lgmp/CLGMPHost.h"
+#include "transport/IControlSink.h"
+
+#include <LGProtocol/KVMFR.h>
+
+#include <Windows.h>
+#include <wdf.h>
+#include <IddCx.h>
+
+#include <memory>
+
+class CLGMPTransport;
+
+class CLGMPControl final : public IControlSink
+{
+private:
+  friend class CLGMPTransport;
+
+  static constexpr int POINTER_SHAPE_BUFFERS   = 3;
+  static constexpr int COLOR_TRANSFORM_BUFFERS = 3;
+
+  CLGMPHost& m_host;
+
+  PLGMPHostQueue m_pointerQueue = nullptr;
+  PLGMPMemory    m_pointerMemory[LGMP_Q_POINTER_LEN] = {};
+  PLGMPMemory    m_pointerShapeMemory[POINTER_SHAPE_BUFFERS] = {};
+  PLGMPMemory    m_pointerTransformMemory[COLOR_TRANSFORM_BUFFERS] = {};
+  int  m_pointerMemoryIndex    = 0;
+  int  m_pointerShapeIndex     = 0;
+  int  m_pointerTransformIndex = 0;
+
+  mutable CSRWLock m_eventLock;
+  IControlEvents * m_events = nullptr;
+  ControlToken     m_token  = {};
+
+  PLGMPMemory FindAvailable(
+    PLGMPMemory * memory, int count, int& index) const;
+  ControlResult SendColorTransform(
+    const std::shared_ptr<const D12ColorTransform>& transform);
+  bool Initialize();
+  void DeInit();
+  LGMP_STATUS ReadDataWithSource(void * data, size_t * size,
+    uint32_t * sourceClientID);
+  LGMP_STATUS AckData();
+  bool HasNewSubscribers();
+  void RequestReplay();
+
+public:
+  explicit CLGMPControl(CLGMPHost& host) :
+    m_host(host) {}
+  ~CLGMPControl() override;
+
+  CLGMPControl(const CLGMPControl&) = delete;
+  CLGMPControl& operator=(const CLGMPControl&) = delete;
+
+  void SetControlEvents(
+    IControlEvents * events, const ControlToken& token) override;
+  ControlResult SendCursor(const IDARG_OUT_QUERY_HWCURSOR& info,
+    const BYTE * data, size_t size, UINT sdrWhiteLevel) override;
+  ControlResult SetColorTransform(
+    std::shared_ptr<const D12ColorTransform> transform) override;
+};

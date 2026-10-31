@@ -1,0 +1,46 @@
+cmake_minimum_required(VERSION 3.10)
+project(displayserver_Wayland LANGUAGES C)
+
+find_package(PkgConfig)
+pkg_check_modules(DISPLAYSERVER_Wayland REQUIRED IMPORTED_TARGET
+  wayland-client
+  wayland-cursor
+  xkbcommon
+)
+
+find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner)
+
+add_library(displayserver_Wayland STATIC
+  activation.c
+  clipboard.c
+  colormgmt.c
+  cursor.c
+  gl.c
+  icon.c
+  idle.c
+  input.c
+  input_event.c
+  output.c
+  poll.c
+  presentation.c
+  state.c
+  registry.c
+  wayland.c
+  window.c
+)
+
+add_subdirectory(protocol)
+add_subdirectory(desktops)
+
+target_link_libraries(displayserver_Wayland
+  PkgConfig::DISPLAYSERVER_Wayland
+  lg_common
+  lg_resources
+  wayland_protocol
+  wayland_desktops
+)
+
+target_include_directories(displayserver_Wayland
+  PRIVATE
+    .
+)

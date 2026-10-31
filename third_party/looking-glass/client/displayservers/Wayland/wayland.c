@@ -1,0 +1,382 @@
+/**
+ * Looking Glass
+ * Copyright © 2017-2026 The Looking Glass Authors
+ * https://looking-glass.io
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc., 59
+ * Temple Place, Suite 330, Boston, MA 02111-1307 USA
+ */
+
+#define _GNU_SOURCE
+#include "wayland.h"
+
+#include <signal.h>
+#include <string.h>
+#include <sys/epoll.h>
+#include <wayland-client.h>
+#include <sys/socket.h>
+
+#include "common/debug.h"
+#include "common/option.h"
+#include "interface/renderer.h"
+
+#include "dynamic/wayland_desktops.h"
+
+static struct Option waylandOptions[] =
+{
+  {
+    .module       = "wayland",
+    .name         = "warpSupport",
+    .description  = "Enable cursor warping",
+    .type         = OPTION_TYPE_BOOL,
+    .value.x_bool = true,
+  },
+  {
+    .module       = "wayland",
+    .name         = "fractionScale",
+    .description  = "Enable fractional scale",
+    .type         = OPTION_TYPE_BOOL,
+    .value.x_bool = true,
+  },
+  {0}
+};
+
+static bool waylandEarlyInit(void)
+{
+  // Request to receive EPIPE instead of SIGPIPE when one end of a pipe
+  // disconnects while a write is pending. This is useful to the Wayland
+  // clipboard backend, where an arbitrary application is on the other end of
+  // that pipe.
+  signal(SIGPIPE, SIG_IGN);
+
+  return true;
+}
+
+static void waylandSetup(void)
+{
+  option_register(waylandOptions);
+}
+
+static bool waylandProbe(void)
+{
+  return getenv("WAYLAND_DISPLAY") != NULL;
+}
+
+static bool getCompositor(char * dst, size_t size)
+{
+  int fd = wl_display_get_fd(wlWm.display);
+  struct ucred ucred;
+  socklen_t len = sizeof(struct ucred);
+
+  if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &ucred, &len) == -1)
+  {
+    DEBUG_ERROR("Failed to get the pid of the socket");
+    return false;
+  }
+
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/comm", ucred.pid);
+  FILE *fp = fopen(path, "r");
+  if (!fp)
+  {
+    DEBUG_ERROR("Failed to open %s", path);
+    return false;
+  }
+
+  if (!fgets(dst, size, fp))
+  {
+    DEBUG_ERROR("Failed to read %s", path);
+    fclose(fp);
+    return false;
+  }
+  fclose(fp);
+
+  dst[strlen(dst) - 1] = 0;
+  return true;
+}
+
+static void eventSourceCallback(uint32_t events, void * opaque)
+{
+  (void)events;
+
+  const LG_DSEventSource * source = (const LG_DSEventSource *)opaque;
+  source->callback(source->opaque);
+}
+
+static bool waylandInit(const LG_DSInitParams params)
+{
+  memset(&wlWm, 0, sizeof(wlWm));
+  memset(&wlCb, 0, sizeof(wlCb));
+  LG_LOCK_INIT(wlWm.surfaceLock);
+  LG_LOCK_INIT(wlWm.pendingHDRLock);
+  LG_LOCK_INIT(wlWm.hdrLock);
+  LG_LOCK_INIT(wlCb.lock);
+  wlWm.desktop        = WL_Desktops[0];
+  atomic_init(&wlWm.lockActive, false);
+  atomic_init(&wlWm.cmFeaturesDone, false);
+  atomic_init(&wlWm.cmCanDoHDR, false);
+  atomic_init(&wlWm.hdrPQWhiteLevel, 203);
+  atomic_init(&wlWm.hdrScRGBWhiteLevel, 80);
+  atomic_init(&wlWm.pendingResize, 0);
+  wlWm.resizeEventFd = -1;
+  wlWm.eventSource   = params.eventSource;
+
+  wlWm.display = wl_display_connect(NULL);
+  if (!wlWm.display)
+    return false;
+
+  // select the desktop interface based on the compositor process name
+  char compositor[1024];
+  if (getCompositor(compositor, sizeof(compositor)))
+  {
+    DEBUG_INFO("Compositor  : %s", compositor);
+    for(int i = 0; i < WL_DESKTOP_COUNT; ++i)
+      if (strcmp(WL_Desktops[i]->compositor, compositor) == 0)
+      {
+        wlWm.desktop = WL_Desktops[i];
+        break;
+      }
+  }
+  else
+    DEBUG_WARN("Compositor: UNKNOWN");
+  DEBUG_INFO("Selected    : %s", wlWm.desktop->name);
+  DEBUG_INFO("Warp support: %s", wlWm.pointerWarpper ?
+    "pointer-warp-v1" : "pointer-constraints-v1");
+
+  wl_list_init(&wlWm.surfaceOutputs);
+
+  wlWm.warpSupport        = option_get_bool("wayland", "warpSupport");
+  wlWm.useFractionalScale = option_get_bool("wayland", "fractionScale");
+
+  if (!waylandPollInit())
+    return false;
+
+  if (wlWm.eventSource.fd >= 0 && wlWm.eventSource.callback &&
+      !waylandPollRegister(wlWm.eventSource.fd, eventSourceCallback,
+        &wlWm.eventSource, EPOLLIN))
+  {
+    DEBUG_ERROR("Failed to register the external event source");
+    return false;
+  }
+
+  if (!waylandOutputInit())
+    return false;
+
+  if (!waylandRegistryInit())
+    return false;
+
+  if (!waylandColorMgmtInit())
+    return false;
+
+  if (!waylandActivationInit())
+    return false;
+
+  if (!waylandIdleInit())
+    return false;
+
+  if (!waylandPresentationInit())
+    return false;
+
+  if (!waylandCursorInit())
+    return false;
+
+  if (!waylandInputInit(params.allowNoInput))
+    return false;
+
+  wlWm.desktop->setSize(params.w, params.h);
+  if (!waylandWindowInit(params.title, params.appId, params.fullscreen, params.maximize,
+        params.borderless, params.resizable))
+    return false;
+
+  int width, height;
+  wlWm.desktop->getSize(&width, &height);
+
+  if (!waylandEGLInit(waylandScaleMulInt(wlWm.scale, width),
+        waylandScaleMulInt(wlWm.scale, height)))
+  {
+    waylandWindowFree();
+    return false;
+  }
+
+  app_handleResizeEvent(width, height, waylandScaleToDouble(wlWm.scale),
+      (struct Border) {0, 0, 0, 0});
+
+  waylandIconInit();
+
+#ifdef ENABLE_OPENGL
+  if (params.opengl && !waylandOpenGLInit())
+  {
+    waylandWindowFree();
+    return false;
+  }
+#endif
+
+  return true;
+}
+
+static void waylandStartup(void)
+{
+}
+
+static void waylandShutdown(void)
+{
+}
+
+static void waylandFree(void)
+{
+  waylandCBFree();
+  waylandIdleFree();
+  waylandPresentationFree();
+  waylandWindowFree();
+  waylandInputFree();
+  waylandOutputFree();
+  waylandColorMgmtFree();
+  waylandRegistryFree();
+  waylandCursorFree();
+  waylandPollFree();
+  wl_display_disconnect(wlWm.display);
+  LG_LOCK_FREE(wlWm.hdrLock);
+  LG_LOCK_FREE(wlWm.pendingHDRLock);
+  LG_LOCK_FREE(wlWm.surfaceLock);
+}
+
+static bool waylandGetProp(LG_DSProperty prop, void * ret)
+{
+  if (prop == LG_DS_WARP_SUPPORT)
+  {
+    *(enum LG_DSWarpSupport*)ret = wlWm.warpSupport ? LG_DS_WARP_SURFACE : LG_DS_WARP_NONE;
+    return true;
+  }
+
+  if (prop == LG_DS_NATIVE_HDR)
+  {
+    const bool active = atomic_load(&wlWm.hdrActive);
+    const bool requested = atomic_load(&wlWm.hdrRequested);
+    *(bool *)ret = active && requested &&
+      atomic_load(&wlWm.hdrActivePQ) == atomic_load(&wlWm.hdrRequestedPQ);
+    return true;
+  }
+
+  if (prop == LG_DS_HDR_WHITE_LEVELS)
+  {
+    *(LG_DSHDRWhiteLevels *)ret = (LG_DSHDRWhiteLevels)
+    {
+      .pq    = atomic_load(&wlWm.hdrPQWhiteLevel),
+      .scRGB = atomic_load(&wlWm.hdrScRGBWhiteLevel),
+    };
+    return true;
+  }
+
+  return false;
+}
+
+void waylandNeedsResize(void)
+{
+  wlWm.needsResize = true;
+  app_invalidateWindow(true);
+  waylandStopWaitFrame();
+}
+
+static void waylandSetFullscreen(bool fs)
+{
+  wlWm.desktop->setFullscreen(fs);
+}
+
+static bool waylandGetFullscreen(void)
+{
+  return wlWm.desktop->getFullscreen();
+}
+
+static void waylandMinimize(void)
+{
+  wlWm.desktop->minimize();
+}
+
+static bool waylandHDRCallback(const void * rendererFormat)
+{
+  if (!wlWm.colorManager)
+    return false;
+
+  const LG_RendererFormat * format = (const LG_RendererFormat *)rendererFormat;
+  if (format->hdr)
+    return waylandRequestHDR(format->hdrDisplayPrimary, format->hdrWhitePoint,
+        format->hdrMaxDisplayLuminance, format->hdrMinDisplayLuminance,
+        format->hdrMaxContentLightLevel, format->hdrMaxFrameAverageLightLevel,
+        format->sdrWhiteLevel, format->hdrPQ, format->hdrMetadata);
+  else
+    waylandRequestClearHDR();
+  return true;
+}
+
+struct LG_DisplayServerOps LGDS_Wayland =
+{
+  .name                = "Wayland",
+  .setup               = waylandSetup,
+  .probe               = waylandProbe,
+  .earlyInit           = waylandEarlyInit,
+  .init                = waylandInit,
+  .startup             = waylandStartup,
+  .shutdown            = waylandShutdown,
+  .free                = waylandFree,
+  .getProp             = waylandGetProp,
+
+#ifdef ENABLE_EGL
+  .getEGLDisplay       = waylandGetEGLDisplay,
+  .getEGLNativeWindow  = waylandGetEGLNativeWindow,
+  .eglSwapBuffers      = waylandEGLSwapBuffers,
+#endif
+
+#ifdef ENABLE_OPENGL
+  .glCreateContext     = waylandGLCreateContext,
+  .glDeleteContext     = waylandGLDeleteContext,
+  .glMakeCurrent       = waylandGLMakeCurrent,
+  .glSetSwapInterval   = waylandGLSetSwapInterval,
+  .glSwapBuffers       = waylandGLSwapBuffers,
+#endif
+  .waitFrame           = waylandWaitFrame,
+  .skipFrame           = waylandSkipFrame,
+  .stopWaitFrame       = waylandStopWaitFrame,
+  .getFramePeriod      = waylandGetFramePeriod,
+  .guestPointerUpdated = waylandGuestPointerUpdated,
+  .setPointer          = waylandSetPointer,
+  .grabPointer         = waylandGrabPointer,
+  .ungrabPointer       = waylandUngrabPointer,
+  .isPointerGrabbed    = waylandIsPointerGrabbed,
+  .capturePointer      = waylandCapturePointer,
+  .uncapturePointer    = waylandUncapturePointer,
+  .isPointerCaptured   = waylandIsPointerCaptured,
+  .grabKeyboard        = waylandGrabKeyboard,
+  .ungrabKeyboard      = waylandUngrabKeyboard,
+  .getKeyLabel         = waylandGetKeyLabel,
+  .warpPointer         = waylandWarpPointer,
+  .realignPointer      = waylandRealignPointer,
+  .isValidPointerPos   = waylandIsValidPointerPos,
+  .requestActivation   = waylandActivationRequestActivation,
+  .inhibitIdle         = waylandInhibitIdle,
+  .uninhibitIdle       = waylandUninhibitIdle,
+  .wait                = waylandWait,
+  .setWindowSize       = waylandSetWindowSize,
+  .setFullscreen       = waylandSetFullscreen,
+  .getFullscreen       = waylandGetFullscreen,
+  .minimize            = waylandMinimize,
+
+  .setHDRImageDesc = waylandHDRCallback,
+
+  .cbInit          = waylandCBInit,
+  .cbNotice        = waylandCBNotice,
+  .cbRelease       = waylandCBRelease,
+  .cbRequest       = waylandCBRequest,
+  .cbRequestReady  = waylandCBRequestReady,
+  .cbRequestCancel = waylandCBRequestCancel,
+};
