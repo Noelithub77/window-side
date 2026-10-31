@@ -26,8 +26,8 @@ struct Snapshot {
     memory_used_bytes: f64,
     uptime_seconds: f64,
     booted_at: String,
-    network_received_bytes: f64,
-    network_sent_bytes: f64,
+    network_received_bytes: Option<f64>,
+    network_sent_bytes: Option<f64>,
     process_count: f64,
     reboot_required: Option<bool>,
     #[serde(default)]
@@ -38,11 +38,12 @@ impl Snapshot {
     fn is_valid(&self) -> bool {
         let counts = [
             self.cpu_percent, self.memory_total_bytes, self.memory_used_bytes, self.uptime_seconds,
-            self.network_received_bytes, self.network_sent_bytes, self.process_count,
+            self.process_count,
         ];
         counts.iter().all(|value| value.is_finite() && *value >= 0.0)
             && self.cpu_percent <= 100.0
             && self.gpu_percent.is_none_or(|gpu| (0.0..=100.0).contains(&gpu))
+            && [self.network_received_bytes, self.network_sent_bytes].iter().flatten().all(|value| value.is_finite() && *value >= 0.0)
             && self.memory_total_bytes > 0.0
             && self.memory_used_bytes <= self.memory_total_bytes
             && !self.booted_at.is_empty()
@@ -94,8 +95,9 @@ fn sample(domain: &str) -> Option<Snapshot> {
             return Some(cached);
         }
     }
-    let fresh = powershell_ok(domain, SCRIPT, "", Duration::from_secs(8))
-        .ok()
+    let output = powershell_ok(domain, SCRIPT, "", Duration::from_secs(12));
+    if let Err(error) = &output { eprintln!("window-side: Windows statistics unavailable: {error}"); }
+    let fresh = output.ok()
         .and_then(|stdout| serde_json::from_str::<Snapshot>(stdout.trim()).ok())
         .filter(Snapshot::is_valid)
         .map(|snapshot| Snapshot { sampled_at: now(), ..snapshot });
@@ -142,7 +144,9 @@ fn report(state: &str, profile: Profile, guest: Option<&Snapshot>, now: f64) -> 
         result["cpu"] = json!(guest.cpu_percent);
         result["memory"] = json!(format!("{} / {}", byte_label(guest.memory_used_bytes), byte_label(guest.memory_total_bytes)));
         result["memoryPercent"] = json!(100.0 * guest.memory_used_bytes / guest.memory_total_bytes);
-        result["network"] = json!(format!("↓ {}\n↑ {}", byte_label(guest.network_received_bytes), byte_label(guest.network_sent_bytes)));
+        if let Some((received, sent)) = guest.network_received_bytes.zip(guest.network_sent_bytes) {
+            result["network"] = json!(format!("↓ {}\n↑ {}", byte_label(received), byte_label(sent)));
+        }
         result["pids"] = json!(guest.process_count as u64);
         result["uptimeSeconds"] = json!((guest.uptime_seconds + age) as u64);
     }
@@ -179,8 +183,8 @@ mod tests {
     fn snapshot() -> Snapshot {
         Snapshot {
             cpu_percent: 12.5, gpu_percent: Some(40.0), memory_total_bytes: 8.0 * 1024.0 * 1024.0 * 1024.0, memory_used_bytes: 2.0 * 1024.0 * 1024.0 * 1024.0,
-            uptime_seconds: 60.0, booted_at: "2026-10-19T00:00:00Z".into(), network_received_bytes: 2048.0,
-            network_sent_bytes: 1024.0, process_count: 120.0, reboot_required: Some(false), sampled_at: 1000.0,
+            uptime_seconds: 60.0, booted_at: "2026-10-19T00:00:00Z".into(), network_received_bytes: Some(2048.0),
+            network_sent_bytes: Some(1024.0), process_count: 120.0, reboot_required: Some(false), sampled_at: 1000.0,
         }
     }
 
@@ -212,5 +216,18 @@ mod tests {
         assert_eq!(result["available"], false);
         assert_eq!(result["memory"], "—");
         assert!(result["cpu"].is_null());
+    }
+
+    #[test]
+    fn unavailable_network_preserves_other_readings() {
+        let guest = Snapshot { network_received_bytes: None, network_sent_bytes: None, ..snapshot() };
+        assert!(guest.is_valid());
+        let result = report("running", Profile::Gpu, Some(&guest), 1000.0);
+        assert_eq!(result["available"], true);
+        assert_eq!(result["cpu"], 12.5);
+        assert_eq!(result["memoryPercent"], 25.0);
+        assert_eq!(result["network"], "—");
+        assert!(result["networkReceivedBytes"].is_null());
+        assert!(!Snapshot { network_received_bytes: Some(-1.0), ..guest }.is_valid());
     }
 }

@@ -9,7 +9,7 @@ trap 'rm -f -- "$script"' EXIT
 $ErrorActionPreference = 'Stop'
 $reports = @()
 PS
-  for name in first-boot.ps1 display-startup.ps1 install-looking-glass.ps1; do
+  for name in first-boot.ps1 display-startup.ps1 install-looking-glass.ps1 metrics.ps1; do
     encoded=$(base64 -w0 "$root/assets/guest/$name")
     printf '\n$source=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('\''%s'\''))\n' "$encoded"
     cat <<'PS'
@@ -18,8 +18,10 @@ $tokens=$null; $errors=$null
 if ($errors.Count -gt 0) { throw ($errors | Out-String) }
 PS
     printf '$reports+=@{name='\''%s'\'';syntaxErrors=0}\n' "$name"
+    if [[ "$name" == metrics.ps1 ]]; then printf '$metricsSource=$source\n'; fi
+    if [[ "$name" == display-startup.ps1 ]]; then printf '$displaySource=$source\n'; fi
     if [[ "$name" == first-boot.ps1 ]]; then printf '$readiness=$source\n'; fi
-    if [[ "$name" != display-startup.ps1 ]]; then
+    if [[ "$name" == first-boot.ps1 || "$name" == install-looking-glass.ps1 ]]; then
       cat <<'PS'
 $guard = & {
   param($script, $installer)
@@ -42,9 +44,12 @@ PS
       fi
     fi
   done
+  encoded=$(base64 -w0 "$root/tests/guest-metrics.ps1")
+  printf '\n$regression=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('\''%s'\''))\n' "$encoded"
+  printf '$regressions = & ([scriptblock]::Create($regression)) -MetricsSource $metricsSource -DisplaySource $displaySource\n'
   cat <<'PS'
 $guest = & ([scriptblock]::Create($readiness)) | ConvertFrom-Json
-@{environment='window-side-libvirt';scripts=$reports;physicalGuardsRejected=$true;applied=$false;readiness=$guest} |
+@{environment='window-side-libvirt';scripts=$reports;regressions=($regressions | ConvertFrom-Json);physicalGuardsRejected=$true;applied=$false;readiness=$guest} |
   ConvertTo-Json -Depth 5 -Compress
 PS
 } > "$script"

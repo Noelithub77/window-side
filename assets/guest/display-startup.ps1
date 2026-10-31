@@ -3,7 +3,8 @@ $system = Get-CimInstance Win32_ComputerSystem
 $qemu = $system.Manufacturer -eq 'QEMU' -and $system.Model -match '^(Standard PC|KVM)'
 $deadline = (Get-Date).AddSeconds(30)
 do {
-  $displays = @(Get-PnpDevice -Class Display -PresentOnly)
+  # A disabled root display can be non-present after a native boot.
+  $displays = @(Get-PnpDevice -Class Display)
   $hardware = @($displays | Where-Object { $_.InstanceId -match '^PCI\\VEN_(10DE|1002|8086)&' })
   $ready = @($hardware | Where-Object Status -eq 'OK')
   if (-not $qemu -or $hardware.Count -eq 0 -or $ready.Count -gt 0) { break }
