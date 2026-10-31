@@ -20,6 +20,10 @@ Usage: ./ops <command>
   icons                 Regenerate tracked icons with rsvg-convert (dev only)
   icons:check           Reject stale generated icons
   check                 Run unit tests, Clippy and CLI/installer fixtures; no VM or desktop actions
+  looking-glass:build   Build the pinned client with optional overlay/capture controls
+  looking-glass:test    Run client input regression tests with synthetic support
+  looking-glass:install Build, back up and replace the Linux client; no viewer restart
+  looking-glass:status  Show the client patch hash and build paths
   check:release         Run those checks against the optimized release
   ci:run [--release]    Dispatch CI on main and watch it; --release warms the release cache
   test:install          Check installer changes inside a temporary prefix
@@ -40,6 +44,10 @@ jq and a built UI. Chromium interaction tests use Playwright. It never launches 
 HELP
     ;;
   ui:dev) shift; exec bash "$root/scripts/ui-dev.sh" "$@" ;;
+  looking-glass:build|looking-glass:test|looking-glass:install|looking-glass:status)
+    action=${1#looking-glass:}; shift
+    exec bash "$root/scripts/looking-glass.sh" "$action" "$@"
+    ;;
   ui:check) pnpm -C ui typecheck; pnpm -C ui lint; exec pnpm -C ui build ;;
   ui:bindings) WS_UPDATE_BINDINGS=1 exec cargo test -j 2 app::bindings::tests::export_bindings ;;
   ui:bindings:check) exec cargo test -j 2 app::bindings::tests::export_bindings ;;
