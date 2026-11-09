@@ -39,7 +39,7 @@ if ($Apply) {
   $agentTrigger.Delay = 'PT5M'
   Register-ScheduledTask -TaskName 'Window Side guest agent' -Action $agentAction -Trigger $agentTrigger -Principal $principal -Settings $settings -Force | Out-Null
   if (Get-Service LGIddHelper -ErrorAction SilentlyContinue) { Set-Service LGIddHelper -StartupType Manual }
-  & 'C:\ProgramData\window-side\display-startup.ps1'
+  & 'C:\ProgramData\window-side\display-startup.ps1' | Out-Null
 }
 @{
   environment='window-side-libvirt'

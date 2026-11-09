@@ -100,8 +100,12 @@ from an unlocked Linux session can then open the Windows desktop.
 The normal host profile keeps the GPU on Linux. The passthrough profile gives
 Windows exclusive use of the selected GPU until Linux reboots normally.
 Window Side includes its customized Looking Glass client and opens that private
-viewer from the app, `ws console`, `ws looking-glass` and `ws launch` in the GPU
-profile. It passes the keyboard and theme settings itself: Insert toggles the
+viewer from the app, `ws console`, `ws looking-glass` and `ws launch` in both
+profiles. In the normal profile Windows renders on the CPU, so its display runs
+at 60 Hz. `virt-viewer` remains for first boot, and takes over if the Windows
+display driver or shared memory is unavailable. Sound reaches the viewer through
+a private SPICE socket, so a VM started before this change has none until its
+next restart. The viewer passes the keyboard and theme settings itself: Insert toggles the
 overlay, left Ctrl+Alt toggles capture on release, and Home reaches Windows.
 The app installer updates the viewer along with `ws`; a separate system client
 or personal `client.ini` is unnecessary. `ws looking-glass-setup` installs the

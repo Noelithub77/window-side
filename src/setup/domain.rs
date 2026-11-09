@@ -1,4 +1,5 @@
 //! Renders the libvirt domain from setup choices.
+use crate::display::looking_glass::SPICE_SOCKET;
 use std::fmt::Write;
 
 pub struct Domain<'a> {
@@ -15,7 +16,11 @@ pub struct Domain<'a> {
     pub serial: Option<&'a str>,
     /// Windows needs the VirtIO drivers before it can boot from a VirtIO disk.
     pub virtio: bool,
-    pub looking_glass: bool,
+}
+
+/// Older domains kept SPICE unreachable, which leaves the Looking Glass viewer without audio.
+pub fn with_spice_socket(xml: &str) -> String {
+    xml.replace("<listen type=\"none\"/>", &format!("<listen type=\"socket\" socket=\"{SPICE_SOCKET}\"/>"))
 }
 
 fn ranges(cpus: &[u32]) -> String {
@@ -56,11 +61,6 @@ pub fn render(domain: &Domain) -> String {
         ("sata", "sda", String::new(), "e1000e")
     };
     let serial = domain.serial.map(|serial| format!("      <serial>{serial}</serial>\n")).unwrap_or_default();
-    let shmem = if domain.looking_glass {
-        "    <shmem name=\"looking-glass\">\n      <model type=\"ivshmem-plain\"/>\n      <size unit=\"M\">64</size>\n    </shmem>\n"
-    } else {
-        ""
-    };
     format!(
         r#"<domain type="kvm">
   <name>{name}</name>
@@ -130,7 +130,7 @@ pub fn render(domain: &Domain) -> String {
       <model type="{nic}"/>
     </interface>
     <graphics type="spice" autoport="yes">
-      <listen type="none"/>
+      <listen type="socket" socket="{spice_socket}"/>
       <image compression="off"/>
       <streaming mode="off"/>
       <clipboard copypaste="yes"/>
@@ -139,7 +139,11 @@ pub fn render(domain: &Domain) -> String {
     <video>
       <model type="virtio" heads="1" primary="yes"/>
     </video>
-{shmem}    <channel type="spicevmc">
+    <shmem name="looking-glass">
+      <model type="ivshmem-plain"/>
+      <size unit="M">64</size>
+    </shmem>
+    <channel type="spicevmc">
       <target type="virtio" name="com.redhat.spice.0"/>
     </channel>
     <channel type="unix">
@@ -167,6 +171,7 @@ pub fn render(domain: &Domain) -> String {
         vcpus = domain.vcpus,
         disk = domain.disk,
         mac = domain.mac,
+        spice_socket = SPICE_SOCKET,
     )
 }
 
@@ -194,7 +199,7 @@ mod tests {
         Domain {
             name: "window-side", uuid: "abc", mac: "52:54:00:00:00:01", memory_mib: 16384, vcpus: 8,
             threads_per_core: 2, vcpu_pins: &[4, 5, 6, 7, 8, 9, 10, 11], emulator_pins: &[12, 13, 14, 15],
-            disk: "/dev/mapper/window-side", serial: None, virtio: true, looking_glass: true,
+            disk: "/dev/mapper/window-side", serial: None, virtio: true,
         }
     }
 
@@ -211,11 +216,18 @@ mod tests {
 
     #[test]
     fn first_boot_uses_sata_and_e1000e_without_pins() {
-        let xml = render(&Domain { virtio: false, looking_glass: false, vcpu_pins: &[], ..domain() });
+        let xml = render(&Domain { virtio: false, vcpu_pins: &[], ..domain() });
         assert!(xml.contains(r#"<target dev="sda" bus="sata"/>"#));
         assert!(xml.contains(r#"<model type="e1000e"/>"#));
         assert!(!xml.contains("cputune"));
-        assert!(!xml.contains("ivshmem"));
+    }
+
+    #[test]
+    fn spice_is_reachable_only_through_the_private_socket() {
+        let socket = format!(r#"<listen type="socket" socket="{SPICE_SOCKET}"/>"#);
+        assert!(render(&domain()).contains(&socket));
+        assert_eq!(with_spice_socket(r#"<listen type="none"/>"#), socket);
+        assert_eq!(with_spice_socket(&socket), socket);
     }
 
     #[test]

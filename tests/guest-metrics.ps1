@@ -37,19 +37,34 @@ if ($sample.cpuPercent -ne 25 -or $sample.memoryUsedBytes -ne 4194304 -or $null 
 }
 # The same disabled IDD must be found after leaving and returning from native Windows.
 $displaySource = $DisplaySource
-$global:wsDisplayEnabled = $false
-& {
-  function Get-CimInstance { [pscustomobject]@{Manufacturer='QEMU';Model='Standard PC'} }
-  function Get-PnpDevice {
-    param($Class, [switch]$PresentOnly)
-    [pscustomobject]@{InstanceId='PCI\VEN_10DE&DEV_1234';Status='OK';FriendlyName='NVIDIA'}
-    if (-not $PresentOnly) { [pscustomobject]@{InstanceId='ROOT\DISPLAY\0000';Status='Unknown';FriendlyName='Looking Glass IDD'} }
+function Invoke-DisplayStartup {
+  param([bool]$GpuPresent, [string]$LookingGlassStatus, [string]$VirtioStatus)
+  $global:wsDisplay = @{enabled=@();disabled=@();refresh=$null}
+  & {
+    function Get-CimInstance { [pscustomobject]@{Manufacturer='QEMU';Model='Standard PC'} }
+    function Get-PnpDevice {
+      param($Class, [switch]$PresentOnly)
+      if (-not $Class) { [pscustomobject]@{InstanceId='PCI\VEN_1AF4&DEV_1110';Status='OK';FriendlyName='IVSHMEM';Present=$true}; return }
+      [pscustomobject]@{InstanceId='PCI\VEN_10DE&DEV_1234';Status='OK';FriendlyName='NVIDIA';Present=$GpuPresent}
+      [pscustomobject]@{InstanceId='PCI\VEN_1AF4&DEV_1050';Status=$VirtioStatus;FriendlyName='Red Hat VirtIO GPU DOD controller';Present=$true}
+      if (-not $PresentOnly) { [pscustomobject]@{InstanceId='ROOT\DISPLAY\0000';Status=$LookingGlassStatus;FriendlyName='Looking Glass IDD';Present=$false} }
+    }
+    function Get-Service { $null }
+    function Test-Path { $true }
+    function Get-ItemProperty { [pscustomobject]@{DefaultRefresh='165.003';GpuRefresh='165.003'} }
+    function Set-ItemProperty { param($Path, $Name, $Value, $Type) if ($Name -eq 'DefaultRefresh') { $global:wsDisplay.refresh = $Value } }
+    function Enable-PnpDevice { param([switch]$Confirm) process { $global:wsDisplay.enabled += $_.FriendlyName } }
+    function Disable-PnpDevice { param([switch]$Confirm) process { $global:wsDisplay.disabled += $_.FriendlyName } }
+    & ([scriptblock]::Create($displaySource)) | Out-Null
   }
-  function Get-Service { $null }
-  function Enable-PnpDevice { process { $global:wsDisplayEnabled = $true } }
-  function Disable-PnpDevice { }
-  & ([scriptblock]::Create($displaySource))
+  $global:wsDisplay
 }
-if (-not $global:wsDisplayEnabled) { throw 'Disconnected Looking Glass display was skipped' }
-Remove-Variable wsDisplayEnabled -Scope Global
-@{optionalSuccess=$true;timeoutCleanup=$true;partialMetrics=$true;disconnectedDisplayRecovery=$true}|ConvertTo-Json -Compress
+$passthrough = Invoke-DisplayStartup -GpuPresent $true -LookingGlassStatus 'Unknown' -VirtioStatus 'Error'
+if ($passthrough.enabled -notcontains 'Looking Glass IDD') { throw 'Disconnected Looking Glass display was skipped' }
+if ($passthrough.refresh) { throw 'The passthrough refresh rate was changed' }
+$software = Invoke-DisplayStartup -GpuPresent $false -LookingGlassStatus 'OK' -VirtioStatus 'OK'
+if ($software.disabled -notcontains 'Red Hat VirtIO GPU DOD controller') { throw 'VirtIO stayed active beside the software Looking Glass display' }
+if ($software.enabled -notcontains 'Looking Glass IDD') { throw 'Looking Glass did not restart for the software renderer' }
+if ($software.refresh -ne '60') { throw 'Software rendering kept the host refresh rate' }
+Remove-Variable wsDisplay -Scope Global
+@{optionalSuccess=$true;timeoutCleanup=$true;partialMetrics=$true;disconnectedDisplayRecovery=$true;softwareDisplay=$true}|ConvertTo-Json -Compress

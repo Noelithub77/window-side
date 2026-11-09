@@ -13,6 +13,20 @@
 - Keep B7-829-cdba29f2 and its Windows IDD protocol. The Windows driver is unchanged.
 - The native client stays a separate process owned and installed by Window Side.
 
+## Normal profile
+
+- **[chosen]** All setups use Looking Glass in the normal profile, rendered by
+  the driver's software mode. `virt-viewer` stays for first boot, and as a fallback
+  that restores the VirtIO display first, since it would otherwise show nothing.
+- **[chosen]** Audio uses a private SPICE socket at `/dev/shm/window-side-spice.sock`;
+  LGMP has no audio. Input and clipboard stay on LGMP.
+- **[chosen]** For integrated GPUs, software mode caps the Windows display at 60 Hz
+  and turns off viewer multisampling. `GpuRefresh` keeps the passthrough rate.
+- Not yet seen running: software rendering, smoothness on an integrated GPU,
+  SPICE audio beside LGMP, and the guest script changes.
+- Reaching the frame buffer needs passwordless `sudo setfacl`. Without it Windows
+  stays on `virt-viewer` in the normal profile.
+
 ## App and packaging
 
 `./ops build`, `dev` and `release:build` build the vendored client into

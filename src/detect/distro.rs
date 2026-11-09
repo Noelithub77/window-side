@@ -21,6 +21,8 @@ const REQUIREMENTS: &[(&str, [&[&str]; 3])] = &[
     ("virt-viewer", [&["virt-viewer"], &["virt-viewer"], &["virt-viewer"]]),
     ("xorriso", [&["libisoburn"], &["xorriso"], &["xorriso"]]),
     ("bsdtar", [&["libarchive"], &["libarchive-tools"], &["bsdtar"]]),
+    ("curl", [&["curl"], &["curl"], &["curl"]]),
+    ("setfacl", [&["acl"], &["acl"], &["acl"]]),
     ("udisksctl", [&["udisks2"], &["udisks2"], &["udisks2"]]),
     ("mkfs.fat", [&["dosfstools"], &["dosfstools"], &["dosfstools"]]),
     ("dmsetup", [&["device-mapper"], &["dmsetup"], &["device-mapper"]]),

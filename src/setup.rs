@@ -182,13 +182,16 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
     let domain_xml = domain::render(&domain::Domain {
         name: &config.vm.name, uuid: &uuid, mac: &mac, memory_mib: config.vm.memory_mib, vcpus: config.vm.vcpus,
         threads_per_core: system.threads_per_core, vcpu_pins: &vcpu_pins, emulator_pins: &emulator_pins,
-        disk: &disk_path, serial: serial.as_deref(), virtio: config.vm.virtio, looking_glass: gpu.is_some(),
+        disk: &disk_path, serial: serial.as_deref(), virtio: config.vm.virtio,
     });
     if !config.vm.virtio {
         notes.push("First boot uses SATA and e1000e until the VirtIO drivers are installed.".into());
     }
 
-    let mut files = Vec::new();
+    let mut files = vec![files::looking_glass_file(&system.user)];
+    if crate::display::looking_glass::client().is_err() {
+        notes.push("Reinstall Window Side to restore its Windows viewer.".into());
+    }
     let mut gpu_kernel = None;
     if let (Some(gpu), Some(profile)) = (gpu, &system.boot_profile) {
         let current = fs::read_to_string("/proc/cmdline").context("Could not read the kernel command line")?;
@@ -199,13 +202,9 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
             Err(error) => return Err(error).context("Could not preserve the initramfs module list"),
         };
         files.extend(boot::generate(profile, &cmdline, system.iommu_flag, &modules)?);
-        files.push(files::looking_glass_file(&system.user));
         gpu_kernel = (profile.loader == crate::detect::boot::Loader::Limine).then(|| profile.kernel.clone());
         if gpu.blocker == Some(Blocker::IommuOff) {
             notes.push("IOMMU turns on after the next reboot; the GPU is checked again then.".into());
-        }
-        if crate::display::looking_glass::client().is_err() {
-            notes.push("Reinstall Window Side to restore its Windows viewer.".into());
         }
     }
     let virtual_disk = match install.mode {

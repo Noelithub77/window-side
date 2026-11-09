@@ -39,7 +39,7 @@ pub enum Action {
     Define,
     /// Start Windows headlessly, wait for its guest agent and sign in
     Start,
-    /// Start Windows if needed and show it (Looking Glass in the GPU profile)
+    /// Start Windows if needed and show it in Looking Glass
     Launch,
     /// Show running Windows without changing its state
     Console,
@@ -52,7 +52,7 @@ pub enum Action {
     /// Root side of reboot, run through pkexec
     #[command(hide = true)]
     RebootRoot { entry: String },
-    /// Open the Looking Glass client in the GPU profile
+    /// Open the Looking Glass client
     LookingGlass,
     /// Install the signed Looking Glass virtual display in running Windows
     LookingGlassSetup,
@@ -274,7 +274,13 @@ fn sign_in_after_start(config: &Config) {
 }
 
 fn show(config: &Config, profile: Profile) -> Result<()> {
-    if profile == Profile::Gpu { looking_glass::open(config, profile) } else { console::open(&config.vm.name) }
+    if profile == Profile::Gpu {
+        return looking_glass::open(config, profile);
+    }
+    if looking_glass::open_software(config, profile)? {
+        return Ok(());
+    }
+    console::open(&config.vm.name)
 }
 
 pub fn run(action: Action) -> Result<i32> {
@@ -302,14 +308,14 @@ pub fn run(action: Action) -> Result<i32> {
         Action::Launch => {
             if profile == Profile::Gpu { looking_glass::client()?; } else { require("virt-viewer")?; }
             lifecycle::start(&config, profile)?;
-            if profile != Profile::Gpu {
-                console::open(domain)?;
+            let booted = lifecycle::wait_for_agent(domain);
+            // A boot that never reaches the agent still needs a screen to diagnose it.
+            if booted.is_err() && profile != Profile::Gpu {
+                let _ = console::open(domain);
             }
-            lifecycle::wait_for_agent(domain)?;
+            booted?;
             sign_in_after_start(&config);
-            if profile == Profile::Gpu {
-                looking_glass::open(&config, profile)?;
-            }
+            show(&config, profile)?;
             notify::send(Urgency::Normal, "Windows is running. Closing the viewer will not stop it.");
         }
         Action::Console => show(&config, profile)?,
@@ -330,7 +336,12 @@ pub fn run(action: Action) -> Result<i32> {
         Action::RebootRoot { .. } | Action::Setup { .. } | Action::Config { .. } | Action::Skills { .. } => {
             bail!("handled before loading the config")
         }
-        Action::LookingGlass => looking_glass::open(&config, profile)?,
+        Action::LookingGlass => {
+            if profile != Profile::Gpu && !looking_glass::prepare(domain) {
+                bail!("Looking Glass is not ready. Run ws looking-glass-setup while Windows is running.");
+            }
+            looking_glass::open(&config, profile)?;
+        }
         Action::LookingGlassSetup => println!("{}", looking_glass::install(&config)?),
         Action::Drivers => drivers::attach(domain)?,
         Action::Status => {

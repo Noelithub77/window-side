@@ -92,7 +92,13 @@ pub fn setup_domain(config: &Config, profile: Profile) -> Result<()> {
     require("virsh")?;
     verify_host(config, profile)?;
     ensure_network()?;
-    let file = domain_file().display().to_string();
+    let path = domain_file();
+    let current = fs::read_to_string(&path).context("Could not read the libvirt domain configuration.")?;
+    let upgraded = crate::setup::domain::with_spice_socket(&current);
+    if upgraded != current {
+        fs::write(&path, upgraded).context("Could not update the libvirt domain configuration.")?;
+    }
+    let file = path.display().to_string();
     virsh::run(&["define", "--validate", &file]).context("The libvirt domain configuration is invalid.")?;
     virsh::run(&["autostart", &config.vm.name, "--disable"]).context("Could not disable automatic Windows startup.")?;
     Ok(())
@@ -174,7 +180,7 @@ pub fn start(config: &Config, profile: Profile) -> Result<()> {
     }
     virsh::run(&["start", domain])
         .context("Libvirt could not start Windows. Reboot to the normal profile if the GPU profile is active.")?;
-    crate::display::looking_glass::grant_shared_memory();
+    crate::display::looking_glass::grant_viewer_access();
     let started = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_secs());
     fs::write(state.join("started-at"), format!("{started}\n"))?;
     Ok(())

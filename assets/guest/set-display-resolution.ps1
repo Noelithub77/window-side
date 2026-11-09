@@ -18,6 +18,7 @@ if ([Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) {
   if ($users.Count -ne 1) { throw 'Exactly one signed-in Windows desktop is required.' }
   $devices = @(Get-PnpDevice -PresentOnly -Class Display | Where-Object InstanceId -like 'PCI\VEN_1AF4&DEV_1050*')
   if ($devices.Count -ne 1) { throw 'Exactly one active VirtIO display adapter is required.' }
+  if ($devices[0].Status -ne 'OK') { throw 'Windows is on the Looking Glass display, which follows the size of the viewer window.' }
   $driver = Get-CimInstance Win32_SystemDriver -Filter "Name='VioGpuDod'"
   $binary = [Text.Encoding]::Unicode.GetString([IO.File]::ReadAllBytes($driver.PathName))
   foreach ($name in @('PersistentDispMode0Width', 'PersistentDispMode0Height')) {

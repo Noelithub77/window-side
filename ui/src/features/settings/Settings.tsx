@@ -56,7 +56,7 @@ const RESOLUTIONS = [
   { id: "2160", label: "4K", width: 3840, height: 2160 },
 ]
 
-function Display({ running, gpu, delay }: { running: boolean; gpu: boolean; delay: number }) {
+function Display({ running, delay }: { running: boolean; delay: number }) {
   const run = useApp((state) => state.run)
   const busy = useApp((state) => state.busy)
   const [picked, setPicked] = useState("")
@@ -82,16 +82,14 @@ function Display({ running, gpu, delay }: { running: boolean; gpu: boolean; dela
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
-      {gpu && (
-        <div className="flex items-center gap-3 rounded-2xl bg-foreground/4 py-2 pr-2 pl-4">
-          <MonitorPlay className="size-4 text-muted-foreground" />
-          <span className="text-sm">Looking Glass</span>
-          <div className="flex-1" />
-          <Button variant="ghost" size="sm" className="rounded-full" disabled={busy !== null} onClick={() => void run("Setting up Looking Glass", { kind: "lookingGlassSetup" })}>
-            Set up
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center gap-3 rounded-2xl bg-foreground/4 py-2 pr-2 pl-4">
+        <MonitorPlay className="size-4 text-muted-foreground" />
+        <span className="text-sm">Looking Glass</span>
+        <div className="flex-1" />
+        <Button variant="ghost" size="sm" className="rounded-full" disabled={busy !== null} onClick={() => void run("Setting up Looking Glass", { kind: "lookingGlassSetup" })}>
+          Set up
+        </Button>
+      </div>
     </Panel>
   )
 }
@@ -106,7 +104,7 @@ export function Settings() {
       <div className="mx-auto grid w-full max-w-5xl grid-cols-2 items-start gap-4 px-8 pt-2 pb-10">
         <div className="flex flex-col gap-4">
           {vm && <Machine vm={vm} />}
-          <Display running={running} gpu={Boolean(vm?.gpu)} delay={0.03} />
+          <Display running={running} delay={0.03} />
         </div>
         <div className="flex flex-col gap-4">
           {credentialSaved !== null && <SignIn saved={credentialSaved} delay={0.02} />}

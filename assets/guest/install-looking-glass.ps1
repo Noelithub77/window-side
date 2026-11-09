@@ -40,6 +40,7 @@ if ($process.ExitCode -ne 0) { throw "Looking Glass IDD installer exited $($proc
 $settings = 'HKLM:\SOFTWARE\LookingGlass\IDD'
 if (-not (Test-Path $settings)) { New-Item $settings -Force | Out-Null }
 Set-ItemProperty $settings -Name DefaultRefresh -Value $Refresh -Type String
+Set-ItemProperty $settings -Name GpuRefresh -Value $Refresh -Type String
 
 $display = Get-PnpDevice -Class Display | Where-Object FriendlyName -like '*Looking Glass*' | Select-Object -First 1
 $helper = Get-Service -Name 'LGIddHelper' -ErrorAction SilentlyContinue

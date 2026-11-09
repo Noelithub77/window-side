@@ -3,6 +3,7 @@ use crate::config::{Config, state_dir};
 use crate::display::{console, looking_glass};
 use crate::guest::{agent, commands};
 use crate::host::{self, Profile};
+use crate::notify::{self, Urgency};
 use crate::setup;
 use crate::vm::{drivers, lifecycle, virsh};
 use anyhow::{Context, Result, bail, ensure};
@@ -11,7 +12,6 @@ use std::fs::{self, File};
 use std::time::Duration;
 
 const PROVISION: &str = include_str!("../assets/guest/first-boot.ps1");
-const DISPLAY_STARTUP: &str = include_str!("../assets/guest/display-startup.ps1");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -125,8 +125,13 @@ pub fn finish(config: &Config) -> Result<Status> {
         commands::write_private(&state_dir().join(RECOVERY_CONFIG), &old_config)?;
         commands::write_private(&state_dir().join("first-boot-domain-before.xml"), &old_xml)?;
     }
-    agent::install_script(domain, "display-startup.ps1", DISPLAY_STARTUP)?;
-    if config.gpu.is_some() { looking_glass::install(config)?; }
+    agent::install_script(domain, "display-startup.ps1", looking_glass::DISPLAY_STARTUP)?;
+    match looking_glass::install(config) {
+        Err(error) if config.gpu.is_some() => return Err(error),
+        // Without passthrough the console still shows Windows, so this must not block setup.
+        Err(error) => notify::send(Urgency::Normal, &format!("Windows will use the console viewer: {error:#}")),
+        Ok(_) => {}
+    }
     let applied = read_guest(domain, true)?;
     ensure!(applied.applied && applied.stage() == Stage::Ready, "Windows provisioning did not complete");
     lifecycle::stop(domain)?;

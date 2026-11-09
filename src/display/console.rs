@@ -10,7 +10,7 @@ fn console(domain: &str) -> Target<'_> {
     Target { program: "virt-viewer", classes: &["window-side", "virt-viewer"], name: Some(domain) }
 }
 
-/// Opens or focuses the SPICE console used when Linux keeps the GPU.
+/// Opens or focuses the SPICE console, used for first boot and when Looking Glass cannot show Windows.
 pub fn open(domain: &str) -> Result<()> {
     require("virt-viewer")?;
     if !virsh::is_running(domain) {
