@@ -10,7 +10,7 @@ use crate::detect::disks::WindowsInstall;
 use crate::detect::gpus::{Blocker, Gpu as DetectedGpu};
 use crate::detect::system::System;
 use crate::detect::{disks, gpus, system};
-use crate::process::{output, text};
+use crate::process::{has_command, output, text};
 use crate::vm::{lifecycle, virsh};
 use anyhow::{Context, Result, bail};
 use root::{FOOTER_SECTORS, HEADER_SECTORS, RootPlan, VirtualDisk};
@@ -212,6 +212,15 @@ pub fn plan(inventory: &Inventory, choices: &Choices, existing: Option<&Config>)
             let serial = udev_property(&install.disk, "ID_SERIAL").context("Could not read the drive serial")?;
             let group = if text("getent", &["group", "libvirt-qemu"]).is_ok() { "libvirt-qemu" } else { "kvm" };
             files.push(files::udev_file(&serial, group));
+            // Same-drive mode keeps its partition open through the virtual disk, so only whole drives get this.
+            let safe = |text: &str| !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
+            if !safe(&config.vm.name) || !safe(&install.filesystem_uuid) {
+                bail!("The VM name or the Windows volume ID has characters setup cannot use");
+            }
+            files.push(files::dirty_hook_file(&config.vm.name, &install.filesystem_uuid));
+            if !["ntfsfix", "ntfsinfo", "ntfsls"].iter().all(|tool| has_command(tool)) {
+                notes.push("Install ntfs-3g so Linux can mount Windows again after it stops.".into());
+            }
             None
         }
         DiskMode::Partition => {

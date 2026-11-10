@@ -107,6 +107,8 @@ pub fn apply(plan_path: &Path) -> Result<()> {
     let units = plan.distro.map_or(&["libvirtd.service"][..], Family::libvirt_units);
     text("systemctl", &[&["enable", "--now"][..], units].concat()).context("Could not start libvirt")?;
     text("systemctl", &["daemon-reload"])?;
+    // A running libvirt only picks up a new hook script after a restart; the VM is off during setup.
+    let _ = output("systemctl", &["try-restart", plan.distro.map_or("libvirtd.service", Family::libvirt_daemon)]);
     if plan.distro.is_some() {
         // Started now so that its stop step runs at the next shutdown.
         text("systemctl", &["enable", "--now", "libvirt-guests.service"]).context("Could not enable clean Windows shutdown")?;

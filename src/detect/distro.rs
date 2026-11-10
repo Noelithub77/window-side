@@ -111,6 +111,14 @@ impl Family {
         }
     }
 
+    /// The daemon that runs QEMU guests. libvirt reads hook scripts only when it starts.
+    pub fn libvirt_daemon(self) -> &'static str {
+        match self {
+            Self::Arch | Self::Debian => "libvirtd.service",
+            Self::Fedora => "virtqemud.service",
+        }
+    }
+
     /// libvirt-guests sources this file over its own defaults.
     pub fn libvirt_guests_conf(self) -> &'static str {
         match self {

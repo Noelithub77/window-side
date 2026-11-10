@@ -12,6 +12,14 @@ Setup turns on `libvirt-guests` so a Linux shutdown or reboot first shuts
 Windows down cleanly (up to two minutes) instead of cutting its power, which
 leaves the real disk needing chkdsk. It never starts Windows at boot.
 
+For a separate Windows drive, setup also installs a libvirt hook
+(`/etc/libvirt/hooks/qemu.d/window-side-dirty`) and restarts libvirt once so it
+is read. After the VM stops, the hook clears the dirty flag Windows leaves on
+its volume, so Linux can mount it without `force`. It uses `ntfsfix -d` from
+`ntfs-3g`: this resets the flag only and is not a chkdsk repair. It skips a
+volume Linux has mounted, a hibernated Windows (`hiberfil.sys`) and anything it
+cannot read. Never run `ntfsfix` by hand while the VM is running.
+
 First boot uses SATA and an emulated network adapter until the guest drivers
 are installed. The desktop guides the flow; agents can use:
 
