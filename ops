@@ -2,6 +2,11 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 cd "$root"
+# Commands that take no arguments would otherwise ignore --help and run.
+case "${1:-}" in
+  ui:dev|looking-glass:*|gui:*|site:deploy|icons|icons:check|ci:run|release:package|aur:prepare|dev) ;;
+  *) [[ "${2:-}" != --help && "${2:-}" != -h ]] || set -- --help ;;
+esac
 case "${1:---help}" in
   --help|-h|help)
     cat <<'HELP'
