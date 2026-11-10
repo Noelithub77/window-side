@@ -34,6 +34,6 @@ cd window-side
 
 Source builds need Rust, Node.js 22.12 or newer, pnpm and the platform development packages. `bash scripts/system-deps.sh --build` prints the exact package command. The installer builds the UI before the locked Rust release.
 
-For local changes, the T3 **Local deploy** action runs `./ops release:build` followed by the installer with the panel skipped. It updates the installed app without opening it. `./ops dev` builds and launches a separate checkout-local development process; agents run graphical apps only inside OmaBox.
+For local changes, `./ops deploy:local` (the T3 **Local deploy** action) runs `./ops release:build`, the installer with the bundled panel skipped, and on Omarchy `./ops plugin:link`. The link points `~/.config/omarchy/plugins/noel.window-side` at `assets/plugin`, so panel edits load from the checkout; a copied folder is moved to a hidden `.noel.window-side.bak.*` first. The shell's file watcher does not follow the link, so rerun `./ops plugin:link` to reload after an edit. It updates the installed app without opening it. `./ops dev` builds and launches a separate checkout-local development process; agents run graphical apps only inside OmaBox.
 
 The Arch package recipe can be generated with `./ops aur:prepare` from a reviewed source archive. It has not been published to the Arch user repository.

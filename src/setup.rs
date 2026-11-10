@@ -25,6 +25,8 @@ const PLUGIN: &[(&str, &str)] = &[
     ("Service.qml", include_str!("../assets/plugin/Service.qml")),
     ("ServiceBridge.qml", include_str!("../assets/plugin/ServiceBridge.qml")),
     ("Panel.qml", include_str!("../assets/plugin/Panel.qml")),
+    ("StockFrame.qml", include_str!("../assets/plugin/StockFrame.qml")),
+    ("NotchFrame.qml", include_str!("../assets/plugin/NotchFrame.qml")),
     ("BarWidget.qml", include_str!("../assets/plugin/BarWidget.qml")),
 ];
 

@@ -89,10 +89,39 @@ pub fn refresh_rate() -> String {
     format!("{:.3}", rate.filter(|rate| *rate > 0.0).unwrap_or(60.0))
 }
 
+/// Windows' scaling steps; the host scale snaps to the nearest one.
+const WINDOWS_SCALES: [u32; 12] = [100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500];
+
+/// The host display's scale as the Windows scaling percentage closest to it.
+pub fn windows_scale() -> u32 {
+    let scale = match current() {
+        Desktop::Hyprland => hyprland::scale(),
+        Desktop::Kde => kde::scale(),
+        Desktop::Gnome => gnome::scale(),
+        Desktop::Other => None,
+    };
+    nearest_windows_scale(scale.filter(|scale| *scale > 0.0).unwrap_or(1.0))
+}
+
+fn nearest_windows_scale(scale: f64) -> u32 {
+    let wanted = scale * 100.0;
+    WINDOWS_SCALES.into_iter().min_by(|a, b| (f64::from(*a) - wanted).abs().total_cmp(&(f64::from(*b) - wanted).abs())).unwrap_or(100)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn host_scale_snaps_to_a_windows_step() {
+        assert_eq!(nearest_windows_scale(1.0), 100);
+        assert_eq!(nearest_windows_scale(1.25), 125);
+        assert_eq!(nearest_windows_scale(1.333), 125);
+        assert_eq!(nearest_windows_scale(1.6), 150);
+        assert_eq!(nearest_windows_scale(2.0), 200);
+        assert_eq!(nearest_windows_scale(8.0), 500);
+    }
 
     #[test]
     fn viewer_identity_survives_process_title_changes() {

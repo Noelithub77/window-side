@@ -71,3 +71,22 @@ The installer checks for missing viewer runtime libraries and reports them.
 Previous patch-build and screenshot artifacts remain under
 `~/.cache/window-side/looking-glass-controls/`; current build outputs are under
 `target/looking-glass/` and `target/libexec/window-side/`.
+
+## Display match and controls (2026-11-10)
+
+- **[chosen]** The viewer opens fullscreen. The client sends its window size
+  in physical pixels (`windowW × windowScale`), so Windows gets the panel's
+  native resolution. After the viewer starts, `set-display-scale.ps1` sets
+  Windows scaling to the host scale snapped to Windows' steps (1.25 → 125%).
+  It runs in the signed-in session through a one-shot scheduled task, and waits
+  3 s first because Windows stores scale relative to a recommended value that
+  changes with resolution.
+- **[chosen]** Settings hides the resolution buttons while `status.lookingGlass`
+  is set. That flag is the GPU profile, or the last `prepare()` result saved in
+  `~/.local/state/window-side/display`. The buttons stay for the VirtIO
+  fallback.
+- **[chosen]** Overview shows a strip with the viewer keys (Ctrl+Alt, Insert,
+  Scroll Lock+F, Scroll Lock+Q) while the Looking Glass display is in use.
+  A one-time toast after the first Open or Launch names Ctrl+Alt.
+- Not yet run on a guest: the scale script, fullscreen sizing on the IDD, and
+  scaling behaviour on multi-monitor hosts (the focused or primary monitor wins).

@@ -26,7 +26,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n")
             + "\n";
-        generated.push_str("\ntype CommandData<T> = T extends null ? void : T\nexport type Commands = { [K in Exclude<keyof typeof commands, 'subscriptions' | 'smokeReport' | 'copyText'>]: (...args: Parameters<(typeof commands)[K]>) => Promise<CommandData<Extract<Awaited<ReturnType<(typeof commands)[K]>>, { status: 'ok' }>['data']>> }\n");
+        generated.push_str("\ntype CommandData<T> = T extends null ? void : T\nexport type Commands = { [K in Exclude<keyof typeof commands, 'subscriptions' | 'smokeReport' | 'perfReport' | 'copyText'>]: (...args: Parameters<(typeof commands)[K]>) => Promise<CommandData<Extract<Awaited<ReturnType<(typeof commands)[K]>>, { status: 'ok' }>['data']>> }\n");
         if std::env::var_os("WS_UPDATE_BINDINGS").is_some() {
             std::fs::write(&path, &generated)?;
         }

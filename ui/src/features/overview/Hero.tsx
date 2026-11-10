@@ -9,7 +9,12 @@ import type { Status, VmState } from "@/bindings"
 import { gib, uptime } from "@/lib/format"
 import { useApp } from "@/lib/store"
 import { cn } from "@/lib/utils"
+import { hintControlsOnce } from "@/features/overview/Controls"
 import { GpuOwner } from "@/features/overview/GpuOwner"
+
+function hintAfterOpen() {
+  if (useApp.getState().status?.lookingGlass) hintControlsOnce()
+}
 
 const SPRING = { type: "spring", stiffness: 260, damping: 30 } as const
 
@@ -49,11 +54,12 @@ function StateChip({ state, reason }: { state: VmState; reason: string | null })
 function Mark({ size, live }: { size: number; live: boolean }) {
   return (
     <motion.div layoutId="hero-mark" transition={SPRING} className="relative grid place-items-center" style={{ width: size * 1.6, height: size * 1.6 }}>
-      <motion.span
+      <span
         aria-hidden
-        className="absolute inset-0 rounded-full bg-primary/25 blur-2xl"
-        animate={live ? { scale: [0.85, 1.1, 0.85], opacity: [0.6, 1, 0.6] } : { scale: 0.7, opacity: 0.35 }}
-        transition={live ? { duration: 3.2, repeat: Infinity, ease: "easeInOut" } : SPRING}
+        className={cn(
+          "absolute inset-0 rounded-full bg-primary/25 blur-2xl transition-[transform,opacity] duration-500",
+          live ? "animate-halo motion-reduce:animate-none" : "scale-70 opacity-35",
+        )}
       />
       <WindowsMark size={size} live={live} />
     </motion.div>
@@ -121,7 +127,7 @@ export function LiveHero({ status }: { status: Status }) {
       <div className="flex-1" />
       {status.vm?.gpu && status.bootProfile && <GpuOwner profile={status.bootProfile} />}
       <PowerMenu />
-      <GlowButton loading={busy === "Opening"} onClick={() => void run("Opening", { kind: "console" })}>
+      <GlowButton loading={busy === "Opening"} onClick={() => void run("Opening", { kind: "console" }).then(hintAfterOpen)}>
         <AppWindow />
         Open
       </GlowButton>
@@ -148,7 +154,7 @@ export function RestHero({ status }: { status: Status }) {
           </motion.div>
         )}
       </div>
-      <GlowButton className="h-12 px-8" loading={launching} disabled={status.state !== "stopped" || busy !== null} onClick={() => void run("Starting", { kind: "launch" })}>
+      <GlowButton className="h-12 px-8" loading={launching} disabled={status.state !== "stopped" || busy !== null} onClick={() => void run("Starting", { kind: "launch" }).then(hintAfterOpen)}>
         <Play className="fill-current" />
         Launch
       </GlowButton>

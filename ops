@@ -28,6 +28,9 @@ Usage: ./ops <command>
   ci:run [--release]    Dispatch CI on main and watch it; --release warms the release cache
   test:install          Check installer changes inside a temporary prefix
   release:build         Build the optimized ws binary with the locked dependencies
+  deploy:local          Release-build, install into ~/.local and link the Omarchy panel to this checkout
+  plugin:link           Point ~/.config/omarchy/plugins/noel.window-side at assets/plugin and reload it
+  plugin:test           Omarchy panel regression in OmaBox with a mocked ws
   release:package --output DIR  Archive the release binary, installer and checksums
   aur:prepare --source-archive FILE --output DIR  Generate checksummed AUR metadata
   test:first-boot        Check readiness and rollback with a fake guest
@@ -35,6 +38,7 @@ Usage: ./ops <command>
   build                 Build the native ws binary with the existing Cargo cache
   dev                   Build and replace this checkout's development app
   gui:test --output DIR Check onboarding, setup, overview and settings in OmaBox
+  gui:perf --output DIR  Page-switch frame timing in WebKitGTK inside OmaBox
   gui:tray --output DIR  Check tray, window close/reopen and single-instance behavior in OmaBox
   gui:installed --binary FILE --output DIR  Open an installed binary in a fresh OmaBox HOME
 
@@ -52,6 +56,7 @@ HELP
   ui:bindings) WS_UPDATE_BINDINGS=1 exec cargo test -j 2 app::bindings::tests::export_bindings ;;
   ui:bindings:check) exec cargo test -j 2 app::bindings::tests::export_bindings ;;
   ui:test) exec pnpm -C ui exec playwright test ;;
+  gui:perf) shift; exec bash "$root/scripts/gui-perf.sh" "$@" ;;
   gui:smoke) shift; exec bash "$root/scripts/gui-smoke.sh" "$@" ;;
   site:dev) exec pnpm -C site dev ;;
   site:check) pnpm -C site lint; exec pnpm -C site build ;;
@@ -88,6 +93,13 @@ HELP
   ci:run) shift; exec bash "$root/scripts/ci-run.sh" "$@" ;;
   test:install) exec bash "$root/tests/install.sh" ;;
   release:build) "$root/ops" looking-glass:build; pnpm -C ui install --frozen-lockfile; pnpm -C ui build; exec cargo build --release --locked -j 2 ;;
+  deploy:local)
+    "$root/ops" release:build
+    "$root/install.sh" --binary "$root/target/release/ws" --no-plugin
+    if command -v omarchy >/dev/null; then exec "$root/ops" plugin:link; fi
+    ;;
+  plugin:link) exec bash "$root/scripts/plugin-link.sh" ;;
+  plugin:test) exec bash "$root/tests/plugin/run.sh" ;;
   release:package) shift; exec bash "$root/scripts/package-release.sh" "$@" ;;
   aur:prepare) shift; exec bash "$root/scripts/prepare-aur.sh" "$@" ;;
   test:first-boot) exec bash "$root/tests/first-boot.sh" ;;

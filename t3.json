@@ -8,7 +8,7 @@
     },
     {
       "name": "Local deploy",
-      "command": "./ops release:build && ./install.sh --binary target/release/ws --no-plugin",
+      "command": "./ops deploy:local",
       "icon": "build"
     }
   ]

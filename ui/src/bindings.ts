@@ -19,6 +19,7 @@ export const commands = {
 	subscriptions: (count: number) => typedError<null>(__TAURI_INVOKE("subscriptions", { count })),
 	copyText: (text: string) => typedError<null>(__TAURI_INVOKE("copy_text", { text })),
 	smokeReport: (report: Report) => typedError<null>(__TAURI_INVOKE("smoke_report", { report })),
+	perfReport: (report: PerfReport) => typedError<null>(__TAURI_INVOKE("perf_report", { report })),
 };
 
 /* Types */
@@ -113,6 +114,13 @@ export type Palette = {
 	colors: string[],
 };
 
+export type PerfReport = {
+	/**  Median frame interval with nothing changing on screen. */
+	idleMs: number | null,
+	scenarios: Scenario[],
+	errors: string[],
+};
+
 export type Plan = {
 	facts: Fact[],
 	notes: string[],
@@ -145,6 +153,17 @@ export type Sample = {
 	up: number | null,
 };
 
+export type Scenario = {
+	name: string,
+	runs: number,
+	frames: number,
+	meanMs: number | null,
+	p95Ms: number | null,
+	maxMs: number | null,
+	/**  Frames slower than 25 ms, 1.5 intervals of the 60 Hz test display. */
+	dropped: number,
+};
+
 export type Shell = {
 	panelInstalled: boolean,
 	version: string,
@@ -166,6 +185,8 @@ export type Status = {
 	processes: number | null,
 	credentialSaved: boolean | null,
 	firstBoot: FirstBoot | null,
+	/**  Windows draws to the Looking Glass display, whose size follows the viewer window. */
+	lookingGlass: boolean,
 };
 
 export type Vendor = "nvidia" | "amd" | "intel" | "other";
@@ -203,4 +224,4 @@ async function typedError<T>(result: Promise<T>): Promise<Result<T, string>> {
 
 
 type CommandData<T> = T extends null ? void : T
-export type Commands = { [K in Exclude<keyof typeof commands, 'subscriptions' | 'smokeReport' | 'copyText'>]: (...args: Parameters<(typeof commands)[K]>) => Promise<CommandData<Extract<Awaited<ReturnType<(typeof commands)[K]>>, { status: 'ok' }>['data']>> }
+export type Commands = { [K in Exclude<keyof typeof commands, 'subscriptions' | 'smokeReport' | 'perfReport' | 'copyText'>]: (...args: Parameters<(typeof commands)[K]>) => Promise<CommandData<Extract<Awaited<ReturnType<(typeof commands)[K]>>, { status: 'ok' }>['data']>> }

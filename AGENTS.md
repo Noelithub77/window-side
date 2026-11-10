@@ -62,6 +62,9 @@ Use `./ops --help` first; prefer it over one-off scripts.
   `third_party/looking-glass/README.window-side.md` before client edits or upstream
   updates. The app installer owns its private viewer; no system client is used.
 - `./ops dev`: build and replace this checkout's development app.
+- `./ops deploy:local`: release build, install into `~/.local`, and on Omarchy link the panel to `assets/plugin` (`plugin:link` alone relinks and reloads it).
+- `./ops plugin:test`: Omarchy panel regression in OmaBox with a mocked `ws`.
+- `./ops gui:perf --output /new/abs/dir`: page-switch frame timing in WebKitGTK inside OmaBox. The host's load moves the numbers, so compare builds in alternating runs.
 - `./ops site:check`: landing page lint and build. `site:dev` serves it; `site:deploy [--dry-run]` builds and deploys it to window-side.allpyq.in with the `cf` CLI.
 
 CI is manual and `v*` tag-only to save minutes. Run `./ops check` locally before

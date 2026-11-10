@@ -59,29 +59,33 @@ const RESOLUTIONS = [
 function Display({ running, delay }: { running: boolean; delay: number }) {
   const run = useApp((state) => state.run)
   const busy = useApp((state) => state.busy)
+  // On Looking Glass, Windows takes the viewer's size: fullscreen gives the native resolution.
+  const lookingGlass = useApp((state) => state.status?.lookingGlass ?? false)
   const [picked, setPicked] = useState("")
   return (
     <Panel title="Display" icon={MonitorSmartphone} color="var(--sky)" delay={delay}>
-      <ToggleGroup
-        type="single"
-        variant="outline"
-        className="w-full"
-        value={picked}
-        disabled={!running || busy !== null}
-        aria-label="Resolution"
-        onValueChange={(value) => {
-          const target = RESOLUTIONS.find((item) => item.id === value)
-          if (!target) return
-          setPicked(value)
-          void run("Resizing", { kind: "resolution", width: target.width, height: target.height })
-        }}
-      >
-        {RESOLUTIONS.map((item) => (
-          <ToggleGroupItem key={item.id} value={item.id} className="h-10 flex-1 font-medium tabular">
-            {item.label}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      {!lookingGlass && (
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          className="w-full"
+          value={picked}
+          disabled={!running || busy !== null}
+          aria-label="Resolution"
+          onValueChange={(value) => {
+            const target = RESOLUTIONS.find((item) => item.id === value)
+            if (!target) return
+            setPicked(value)
+            void run("Resizing", { kind: "resolution", width: target.width, height: target.height })
+          }}
+        >
+          {RESOLUTIONS.map((item) => (
+            <ToggleGroupItem key={item.id} value={item.id} className="h-10 flex-1 font-medium tabular">
+              {item.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      )}
       <div className="flex items-center gap-3 rounded-2xl bg-foreground/4 py-2 pr-2 pl-4">
         <MonitorPlay className="size-4 text-muted-foreground" />
         <span className="text-sm">Looking Glass</span>

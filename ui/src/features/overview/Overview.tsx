@@ -3,6 +3,7 @@ import { AnimatePresence, LayoutGroup } from "motion/react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useApp } from "@/lib/store"
 import { LiveHero, RestHero } from "@/features/overview/Hero"
+import { Controls } from "@/features/overview/Controls"
 import { Vitals } from "@/features/overview/Vitals"
 
 export function Overview() {
@@ -23,6 +24,7 @@ export function Overview() {
         {live ? <LiveHero status={status} /> : <RestHero status={status} />}
         <AnimatePresence>{live && <Vitals waiting={!available} />}</AnimatePresence>
       </LayoutGroup>
+      {live && status.lookingGlass && <Controls />}
     </div>
   )
 }

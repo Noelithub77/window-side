@@ -59,6 +59,13 @@ pub fn status(reading: Option<&Reading>, credential: Option<bool>) -> Result<Sta
         None
     };
     let live = reading.filter(|r| r.available && state == VmState::Running);
+    let boot_profile = match host::boot_profile(c.gpu.as_ref()) {
+        host::Profile::Normal => Some(BootProfile::Normal),
+        host::Profile::Gpu => Some(BootProfile::Gpu),
+        host::Profile::Unknown => None,
+    };
+    let looking_glass = state == VmState::Running
+        && (boot_profile == Some(BootProfile::Gpu) || crate::display::looking_glass::last_chosen());
     Ok(Status {
         configured: true,
         vm: Some(VmSummary {
@@ -73,11 +80,7 @@ pub fn status(reading: Option<&Reading>, credential: Option<bool>) -> Result<Sta
         }),
         state,
         unavailable_reason,
-        boot_profile: match host::boot_profile(c.gpu.as_ref()) {
-            host::Profile::Normal => Some(BootProfile::Normal),
-            host::Profile::Gpu => Some(BootProfile::Gpu),
-            host::Profile::Unknown => None,
-        },
+        boot_profile,
         storage_error: reading
             .and_then(|r| r.storage.as_ref())
             .map(|s| s.error.clone())
@@ -87,6 +90,7 @@ pub fn status(reading: Option<&Reading>, credential: Option<bool>) -> Result<Sta
         processes: live.and_then(|r| r.pids),
         credential_saved: credential,
         first_boot,
+        looking_glass,
     })
 }
 fn vm_state(result: Result<String>) -> (VmState, Option<String>) {
@@ -116,6 +120,7 @@ pub fn empty() -> Status {
         processes: None,
         credential_saved: None,
         first_boot: None,
+        looking_glass: false,
     }
 }
 #[derive(Default)]

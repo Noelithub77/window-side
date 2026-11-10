@@ -36,6 +36,14 @@ pub fn class_is(client: &Value, class: &str) -> bool {
     client["class"].as_str() == Some(class)
 }
 
+/// Scale of the focused monitor, where the viewer opens.
+pub fn scale() -> Option<f64> {
+    let monitors = text("hyprctl", &["monitors", "-j"]).ok()?;
+    let Value::Array(monitors) = serde_json::from_str::<Value>(&monitors).ok()? else { return None };
+    let focused = monitors.iter().find(|monitor| monitor["focused"] == true).or_else(|| monitors.first())?;
+    focused["scale"].as_f64()
+}
+
 /// Highest refresh rate among connected monitors.
 pub fn refresh_rate() -> Option<f64> {
     let monitors = text("hyprctl", &["monitors", "-j"]).ok()?;

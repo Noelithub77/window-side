@@ -14,12 +14,13 @@ type Props = {
   className?: string
 }
 
-/** A frosted card that rises in; optionally titled with a tinted icon. */
+/** A frosted card that rises in; optionally titled with a tinted icon.
+ *  It slides without fading: below full opacity its backdrop blur is isolated and snaps in at the end. */
 export function Panel({ children, delay = 0, title, icon, color, aside, className }: Props) {
   return (
     <motion.section
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ y: 8 }}
+      animate={{ y: 0 }}
       transition={{ delay, duration: 0.2, ease: "easeOut" }}
       className={cn("glass sheen flex flex-col gap-5 rounded-3xl p-6 ring-1 ring-border", className)}
     >

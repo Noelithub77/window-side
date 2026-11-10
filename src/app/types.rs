@@ -229,6 +229,8 @@ pub struct Status {
     pub processes: Option<f64>,
     pub credential_saved: Option<bool>,
     pub first_boot: Option<FirstBoot>,
+    /// Windows draws to the Looking Glass display, whose size follows the viewer window.
+    pub looking_glass: bool,
 }
 #[derive(Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

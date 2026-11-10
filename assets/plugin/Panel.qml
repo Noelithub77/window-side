@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 Panel {
@@ -16,11 +17,11 @@ Panel {
   property bool forceArmed: false
 
   readonly property var barIdentity: hostWidget || root
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   // Keep metric cards readable even when the active popup theme is light.
   readonly property color cardBackground: "#0b111b"
   readonly property color cardForeground: "#d7dde5"
-  readonly property color urgent: bar ? bar.urgent : Color.urgent
+  readonly property color urgent: bar ? bar.urgent : Commons.Color.urgent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property string bootProfile: service ? service.bootProfile : "unknown"
   readonly property string statusLabel: !service ? "Checking"
@@ -31,7 +32,7 @@ Panel {
   readonly property color statusColor: !service || service.busy ? foreground
     : service.hasError ? urgent
     : service.status === "unknown" ? urgent
-    : service.running ? Color.accent : Qt.darker(foreground, 1.8)
+    : service.running ? Commons.Color.accent : Qt.darker(foreground, 1.8)
   // A profile waiting for its confirming second click.
   property string rebootArmed: ""
   readonly property var bootOptions: [
@@ -100,19 +101,23 @@ Panel {
     onTriggered: root.forceArmed = false
   }
 
-  KeyboardPanel {
-    id: panel
-    anchorItem: root.anchorItem
-    owner: root.barIdentity
-    bar: root.bar
-    open: root.opened
-    focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(360))
-    contentHeight: panel.fittedContentHeight(contentColumn.implicitHeight)
+  // Omarchy's KeyboardPanel by default; the noshell bar (noel.notch.bar) gets its own
+  // frame. Each frame lives in its own file so a missing notch bar never fails this one.
+  function loadFrame() {
+    if (!root.bar || frame.status !== Loader.Null) return
+    frame.setSource(root.bar.noshellHost ? "NotchFrame.qml" : "StockFrame.qml", { controller: root, body: body })
+  }
+  onBarChanged: loadFrame()
+  Component.onCompleted: loadFrame()
+
+  Loader { id: frame }
+
+  Component {
+    id: body
 
     PanelKeyCatcher {
       id: keyCatcher
-      anchors.fill: parent
+      readonly property real contentHeight: contentColumn.implicitHeight
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -129,7 +134,7 @@ Panel {
           iconComponent: Component {
             Text {
               text: ""
-              color: root.service && root.service.running ? Color.accent : root.foreground
+              color: root.service && root.service.running ? Commons.Color.accent : root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.display
             }
@@ -178,7 +183,7 @@ Panel {
               implicitHeight: Style.space(58)
               radius: Style.cornerRadius
               color: root.cardBackground
-              borderSpec: Border.controlSpec("normal", root.cardForeground, Color.accent)
+              borderSpec: Border.controlSpec("normal", root.cardForeground, Commons.Color.accent)
 
               Column {
                 anchors.centerIn: parent

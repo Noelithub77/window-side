@@ -45,6 +45,7 @@ impl Fixture {
         } else {
             BootProfile::Gpu
         });
+        status.looking_glass = running;
         status.credential_saved = match scenario {
             "status" => Some(false),
             "stopped" => Some(true),
@@ -227,11 +228,13 @@ impl Fixture {
                 self.status.state = VmState::Running;
                 self.status.uptime_seconds = Some(12.);
                 self.status.processes = Some(88.);
+                self.status.looking_glass = true;
             }
             Action::Stop | Action::ForceStop => {
                 self.status.state = VmState::Stopped;
                 self.status.uptime_seconds = None;
                 self.status.processes = None;
+                self.status.looking_glass = false;
             }
             Action::Reboot { profile } => self.status.boot_profile = Some(profile),
             Action::FirstBootStart => {

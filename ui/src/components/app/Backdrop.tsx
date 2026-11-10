@@ -87,18 +87,30 @@ void main(void) {
 }
 `
 
-type Props = { mood: Mood; tint?: Rgb | null }
+type Props = { mood: Mood; tint?: Rgb | null; page: string }
+
+// Holding the aurora still while a page mounts frees the frame budget for the page,
+// and the glass panels stop re-blurring a moving background mid-slide.
+const SETTLE_MS = 450
 
 /** Full-window WebGL aurora behind every page; plain gradients when WebGL is missing. */
-export function Backdrop({ mood, tint = null }: Props) {
+export function Backdrop({ mood, tint = null, page }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const target = useRef({ mood, tint })
   const redraw = useRef<(() => void) | null>(null)
+  const settle = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     target.current = { mood, tint }
     redraw.current?.()
   }, [mood, tint])
+
+  const shown = useRef(page)
+  useEffect(() => {
+    if (shown.current === page) return
+    shown.current = page
+    settle.current?.()
+  }, [page])
 
   useEffect(() => {
     const element = host.current
@@ -167,12 +179,19 @@ export function Backdrop({ mood, tint = null }: Props) {
             app.start()
           }
         }
+        let settling: number | undefined
+        settle.current = () => {
+          window.clearTimeout(settling)
+          app.stop()
+          settling = window.setTimeout(sync, SETTLE_MS)
+        }
         const resize = new ResizeObserver(sync)
         resize.observe(element)
         redraw.current = sync
         document.addEventListener("visibilitychange", sync)
         reduced.addEventListener("change", sync)
         cleanup = () => {
+          window.clearTimeout(settling)
           resize.disconnect()
           document.removeEventListener("visibilitychange", sync)
           reduced.removeEventListener("change", sync)
@@ -186,6 +205,7 @@ export function Backdrop({ mood, tint = null }: Props) {
     return () => {
       disposed = true
       redraw.current = null
+      settle.current = null
       cleanup?.()
       if (ready) app.destroy(true)
     }

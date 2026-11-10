@@ -61,15 +61,15 @@ const detection: Detection = {
 
 const vm = { name: "window-side", memoryMib: 16384, vcpus: 10, gpu: "0000:01:00.0", diskMode: "whole" as const }
 
-const setupStatus: Status = { configured: false, vm: null, state: "unavailable", unavailableReason: "Windows is not configured", bootProfile: "gpu", storageError: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: null }
+const setupStatus: Status = { configured: false, vm: null, state: "unavailable", unavailableReason: "Windows is not configured", bootProfile: "gpu", storageError: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: null, lookingGlass: false }
 
 const statuses: Record<string, Status> = {
   setup: setupStatus,
   unavailable: { ...setupStatus, configured: true, vm, unavailableReason: "libvirt is not running" },
-  status: { configured: true, vm, state: "running", unavailableReason: null, bootProfile: "gpu", storageError: null, uptimeSeconds: 3349, processes: 142, credentialSaved: false, firstBoot: null },
-  stopped: { configured: true, vm, state: "stopped", unavailableReason: null, bootProfile: "normal", storageError: null, uptimeSeconds: null, processes: null, credentialSaved: true, firstBoot: null },
-  "first-boot-start": { configured: true, vm, state: "stopped", unavailableReason: null, bootProfile: "gpu", storageError: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: { stage: "start", storageReady: null, networkReady: null } },
-  "first-boot-ready": { configured: true, vm, state: "running", unavailableReason: null, bootProfile: "gpu", storageError: null, uptimeSeconds: 420, processes: 96, credentialSaved: null, firstBoot: { stage: "ready", storageReady: true, networkReady: true } },
+  status: { configured: true, vm, state: "running", unavailableReason: null, bootProfile: "gpu", storageError: null, uptimeSeconds: 3349, processes: 142, credentialSaved: false, firstBoot: null, lookingGlass: true },
+  stopped: { configured: true, vm, state: "stopped", unavailableReason: null, bootProfile: "normal", storageError: null, uptimeSeconds: null, processes: null, credentialSaved: true, firstBoot: null, lookingGlass: false },
+  "first-boot-start": { configured: true, vm, state: "stopped", unavailableReason: null, bootProfile: "gpu", storageError: null, uptimeSeconds: null, processes: null, credentialSaved: null, firstBoot: { stage: "start", storageReady: null, networkReady: null }, lookingGlass: false },
+  "first-boot-ready": { configured: true, vm, state: "running", unavailableReason: null, bootProfile: "gpu", storageError: null, uptimeSeconds: 420, processes: 96, credentialSaved: null, firstBoot: { stage: "ready", storageReady: true, networkReady: true }, lookingGlass: true },
 }
 
 let status: Status = structuredClone(statuses[scenario] ?? setupStatus)
@@ -166,7 +166,7 @@ async function run(action: Action): Promise<void> {
   switch (action.kind) {
     case "launch":
       agentReady = false
-      update({ state: "running", uptimeSeconds: null, processes: null })
+      update({ state: "running", uptimeSeconds: null, processes: null, lookingGlass: true })
       window.setTimeout(() => {
         agentReady = true
         update({ uptimeSeconds: 12, processes: 88 })
@@ -174,7 +174,7 @@ async function run(action: Action): Promise<void> {
       return
     case "stop":
     case "forceStop":
-      update({ state: "stopped", uptimeSeconds: null, processes: null })
+      update({ state: "stopped", uptimeSeconds: null, processes: null, lookingGlass: false })
       return
     case "reboot":
       update({ bootProfile: action.profile })

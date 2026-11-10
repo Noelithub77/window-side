@@ -54,6 +54,18 @@ fn current_rate(outputs: &Value) -> Option<f64> {
         .reduce(f64::max)
 }
 
+fn primary_scale(outputs: &serde_json::Value) -> Option<f64> {
+    let enabled: Vec<_> = outputs["outputs"].as_array()?.iter().filter(|output| output["enabled"] == true).collect();
+    let primary = enabled.iter().find(|output| output["priority"] == 1).or_else(|| enabled.first())?;
+    primary["scale"].as_f64()
+}
+
+/// Scale of the primary output.
+pub fn scale() -> Option<f64> {
+    let outputs = text("kscreen-doctor", &["-j"]).ok()?;
+    primary_scale(&serde_json::from_str(&outputs).ok()?)
+}
+
 pub fn refresh_rate() -> Option<f64> {
     let outputs = text("kscreen-doctor", &["-j"]).ok()?;
     current_rate(&serde_json::from_str(&outputs).ok()?)
@@ -71,6 +83,11 @@ mod tests {
             { "enabled": false, "currentModeId": "1", "modes": [{ "id": "1", "refreshRate": 240.0 }] },
         ]});
         assert_eq!(current_rate(&outputs), Some(143.98));
+        let scaled = json!({ "outputs": [
+            { "enabled": true, "priority": 2, "scale": 1.0 },
+            { "enabled": true, "priority": 1, "scale": 1.5 },
+        ]});
+        assert_eq!(primary_scale(&scaled), Some(1.5));
         let script = script(&["window-side", "virt-viewer"], Some("win\"11")).unwrap_or_default();
         assert!(script.contains(r#"const classes = ["window-side","virt-viewer"]; const name = "win\"11";"#));
     }

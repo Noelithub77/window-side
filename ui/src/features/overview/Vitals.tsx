@@ -114,11 +114,9 @@ function History({ vital, samples }: { vital: Vital; samples: Sample[] }) {
 function Waiting() {
   return (
     <div className="relative grid flex-1 place-items-center overflow-hidden">
-      <motion.span
+      <span
         aria-hidden
-        className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-mint/60 to-transparent"
-        animate={{ x: ["-60%", "60%"] }}
-        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", repeatType: "mirror" }}
+        className="absolute inset-x-0 top-1/2 h-px animate-sweep bg-gradient-to-r from-transparent via-mint/60 to-transparent motion-reduce:animate-none"
       />
       <span className="glass relative flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium text-muted-foreground ring-1 ring-border">
         <Spinner className="size-3 text-mint" />
@@ -143,9 +141,9 @@ export function Vitals({ waiting }: { waiting: boolean }) {
   return (
     <motion.section
       className="flex min-h-0 flex-1 flex-col gap-4"
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 16 }}
+      initial={{ y: 16 }}
+      animate={{ y: 0 }}
+      exit={{ y: 16 }}
       transition={{ type: "spring", stiffness: 220, damping: 26, delay: 0.1 }}
     >
       <div className="grid grid-cols-4 gap-4">

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "." as Local
 
@@ -49,9 +50,9 @@ BarWidget {
     text: root.hasError ? " !" : root.running && root.windowSideService && root.windowSideService.metricsAvailable
       ? " " + Math.round(root.windowSideService.cpuPercent) + "%"
       : ""
-    foreground: root.hasError ? (bar ? bar.urgent : Color.urgent)
-      : root.running ? Color.accent : Qt.darker(bar ? bar.barForeground : Color.foreground, 1.55)
-    activeColor: root.hasError ? (bar ? bar.urgent : Color.urgent) : Color.accent
+    foreground: root.hasError ? (bar ? bar.urgent : Commons.Color.urgent)
+      : root.running ? Commons.Color.accent : Qt.darker(bar ? bar.barForeground : Commons.Color.foreground, 1.55)
+    activeColor: root.hasError ? (bar ? bar.urgent : Commons.Color.urgent) : Commons.Color.accent
     active: root.opened
     useActiveColor: root.running
     labelVisible: true

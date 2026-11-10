@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { Check, Palette, PanelTop, Plus } from "lucide-react"
-import { motion } from "motion/react"
 import { toast } from "sonner"
 import { ChoiceCard } from "@/components/app/ChoiceCard"
 import { Panel } from "@/components/app/Panel"
@@ -15,21 +14,14 @@ const PASTEL = {
   colors: ["oklch(0.86 0.105 170)", "oklch(0.79 0.105 292)", "oklch(0.8 0.1 355)", "oklch(0.83 0.08 232)", "oklch(0.85 0.085 58)"],
 }
 
-/** A tiny scene of overlapping glows in the theme's colours. */
+/** A tiny still scene of overlapping glows in the theme's colours; gradients, not blurred layers, so it costs nothing to paint. */
 function Swatch({ ink, colors }: { ink: string; colors: string[] }) {
-  return (
-    <div className="relative h-20 overflow-hidden rounded-2xl ring-1 ring-foreground/10" style={{ background: ink }}>
-      {colors.slice(0, 5).map((color, index) => (
-        <motion.span
-          key={color}
-          className="absolute size-14 rounded-full blur-md"
-          style={{ background: color, left: `${String(index * 19 - 4)}%`, top: index % 2 === 0 ? "-20%" : "35%" }}
-          animate={{ y: [0, index % 2 === 0 ? 6 : -6, 0] }}
-          transition={{ duration: 4 + index, repeat: Infinity, ease: "easeInOut" }}
-        />
-      ))}
-    </div>
-  )
+  const glows = colors.slice(0, 5).map((color, index) => {
+    const x = index * 19 + 7
+    const y = index % 2 === 0 ? 10 : 70
+    return `radial-gradient(circle 34px at ${String(x)}% ${String(y)}%, ${color}, transparent)`
+  })
+  return <div className="h-20 rounded-2xl ring-1 ring-foreground/10" style={{ background: [...glows, ink].join(", ") }} />
 }
 
 export function Appearance({ shell, delay }: { shell: Shell; delay: number }) {

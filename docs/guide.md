@@ -113,8 +113,13 @@ profiles. In the normal profile Windows renders on the CPU, so its display runs
 at 60 Hz. `virt-viewer` remains for first boot, and takes over if the Windows
 display driver or shared memory is unavailable. Sound reaches the viewer through
 a private SPICE socket, so a VM started before this change has none until its
-next restart. The viewer passes the keyboard and theme settings itself: Insert toggles the
-overlay, left Ctrl+Alt toggles capture on release, and Home reaches Windows.
+next restart. The viewer opens fullscreen, so Windows takes the panel's native
+resolution, and Windows scaling is set to the host display's (1.25 becomes
+125%). Settings hides the resolution buttons while Windows is on this display.
+The viewer passes the keyboard and theme settings itself: Insert toggles the
+overlay, left Ctrl+Alt toggles capture on release, Scroll Lock+F leaves
+fullscreen, Scroll Lock+Q closes the viewer, and Home reaches Windows. Overview
+lists these keys while the viewer's display is in use.
 The app installer updates the viewer along with `ws`; a separate system client
 or personal `client.ini` is unnecessary. `ws looking-glass-setup` installs the
 matching Windows IDD. Host reboot is explicit.

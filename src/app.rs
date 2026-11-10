@@ -5,6 +5,7 @@ mod commands;
 mod fixture;
 mod instance;
 mod readings;
+mod perf;
 mod smoke;
 mod tray;
 mod types;
@@ -50,7 +51,10 @@ fn launch() -> anyhow::Result<()> {
             }
         })
         .setup(move |app| {
-            if isolated { smoke::start(app.handle()); }
+            if isolated {
+                smoke::start(app.handle());
+                perf::start(app.handle());
+            }
             let handle = app.handle().clone();
             let polling = handle.clone();
             std::thread::spawn(move || {

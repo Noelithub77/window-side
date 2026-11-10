@@ -171,11 +171,33 @@ Item {
     onExited: function(exitCode) { root.actionFinished(exitCode, "Force stop failed", forceStopError.text) }
   }
 
+  // Metrics only change while Windows runs. Otherwise libvirt lifecycle
+  // events report starts and stops; the slow pass only catches storage state.
   Timer {
-    interval: root.running ? 5000 : 10000
+    interval: root.running ? 5000 : 120000
     repeat: true
     running: true
     triggeredOnStart: true
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    id: lifecycleRefresh
+    interval: 500
+    onTriggered: root.refresh()
+  }
+
+  Process {
+    id: lifecycleWatch
+    running: true
+    command: ["virsh", "-c", "qemu:///system", "event", "--loop", "--event", "lifecycle"]
+    stdout: SplitParser { onRead: function(line) { lifecycleRefresh.restart() } }
+    onExited: lifecycleWatchRestart.restart()
+  }
+
+  Timer {
+    id: lifecycleWatchRestart
+    interval: 10000
+    onTriggered: lifecycleWatch.running = true
   }
 }

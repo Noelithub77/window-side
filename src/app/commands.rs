@@ -218,7 +218,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             launch_agent,
             subscriptions,
             copy_text,
-            super::smoke::smoke_report
+            super::smoke::smoke_report,
+            super::perf::perf_report
         ])
         .typ::<bindings::Events>()
 }

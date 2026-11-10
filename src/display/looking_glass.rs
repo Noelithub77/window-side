@@ -21,9 +21,12 @@ const SHARED_MEMORY: &str = "/dev/shm/looking-glass";
 pub const SPICE_SOCKET: &str = "/dev/shm/window-side-spice.sock";
 pub const DISPLAY_STARTUP: &str = include_str!("../../assets/guest/display-startup.ps1");
 const INSTALL_SCRIPT: &str = include_str!("../../assets/guest/install-looking-glass.ps1");
+const SCALE_SCRIPT: &str = include_str!("../../assets/guest/set-display-scale.ps1");
 const VIEWER: Target<'static> = Target { program: "window-side-viewer", classes: &["window-side-viewer"], name: None };
 const CLIENT_OPTIONS: &[&str] = &[
     "win:appId=window-side-viewer",
+    // Fullscreen hands Windows the panel's native resolution; it follows the window size.
+    "win:fullScreen=yes",
     "input:escapeKey=KEY_SCROLLLOCK",
     "input:overlayKey=KEY_INSERT",
     "input:ctrlAltCapture=yes",
@@ -63,7 +66,25 @@ pub fn open(config: &Config, profile: Profile) -> Result<()> {
     }
     desktop::close(&VIEWER);
     let options = viewer_options(profile, UnixStream::connect(SPICE_SOCKET).is_ok());
-    start_client(&client, Path::new("systemd-run"), &options)
+    start_client(&client, Path::new("systemd-run"), &options)?;
+    match_scale(&config.vm.name);
+    Ok(())
+}
+
+/// Sets Windows' scaling to the host display's so text keeps the size it has on Linux.
+/// Windows stores scale relative to a recommended value that depends on resolution,
+/// so this waits for the fullscreen viewer to have resized the display first.
+fn match_scale(domain: &str) {
+    if !agent::ping(domain) {
+        return;
+    }
+    std::thread::sleep(Duration::from_secs(3));
+    let percent = desktop::windows_scale();
+    let applied = agent::install_script(domain, "set-display-scale.ps1", SCALE_SCRIPT)
+        .and_then(|target| powershell_ok(domain, &format!("& '{target}' -Percent {percent}"), "", Duration::from_secs(45)));
+    if let Err(e) = applied {
+        eprintln!("window-side: Windows scaling was left as it was: {e:#}");
+    }
 }
 
 /// Opens the viewer without a passthrough GPU; false leaves Windows on its console display.
@@ -90,7 +111,18 @@ pub fn prepare(domain: &str) -> bool {
     let Ok(report) = powershell_ok(domain, DISPLAY_STARTUP, arguments, Duration::from_secs(60)) else {
         return false;
     };
-    usable && serde_json::from_str::<serde_json::Value>(report.trim()).is_ok_and(|report| report["lookingGlass"] == true)
+    let chosen = usable && serde_json::from_str::<serde_json::Value>(report.trim()).is_ok_and(|report| report["lookingGlass"] == true);
+    let _ = crate::guest::commands::write_private(&display_file(), if chosen { "looking-glass" } else { "console" });
+    chosen
+}
+
+fn display_file() -> PathBuf {
+    crate::config::state_dir().join("display")
+}
+
+/// Whether the last viewer launch moved Windows onto the Looking Glass display.
+pub fn last_chosen() -> bool {
+    fs::read_to_string(display_file()).is_ok_and(|display| display == "looking-glass")
 }
 
 pub fn client() -> Result<PathBuf> {

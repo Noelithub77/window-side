@@ -74,7 +74,7 @@ export function App() {
   return (
     <MotionConfig reducedMotion="user">
       <TooltipProvider delayDuration={300}>
-        <Backdrop mood={mood} tint={tint} />
+        <Backdrop mood={mood} tint={tint} page={view} />
         <div className="flex h-full flex-col">
           <TitleBar navigable={view === "overview" || view === "settings"} />
           <main className="relative flex min-h-0 flex-1 flex-col">
