@@ -90,3 +90,14 @@ Previous patch-build and screenshot artifacts remain under
   A one-time toast after the first Open or Launch names Ctrl+Alt.
 - Not yet run on a guest: the scale script, fullscreen sizing on the IDD, and
   scaling behaviour on multi-monitor hosts (the focused or primary monitor wins).
+
+## App identity (2026-11-10)
+
+- **[chosen]** The app calls `glib::set_prgname("window-side")` before GTK
+  starts, so its Wayland app ID matches `window-side.desktop` instead of the
+  binary name `ws`.
+- The viewer keeps its own app ID, `window-side-viewer`, so focus and close stay
+  scoped to it. A hidden `window-side-viewer.desktop` gives it the app icon, and
+  the client's built-in window icon and splash logo are Window Side's.
+- **[chosen]** Stay on Tauri 2 with WebKitGTK. Tauri 3's CEF runtime forces X11
+  (XWayland on Hyprland) and `tauri-specta` has no Tauri 3 release.

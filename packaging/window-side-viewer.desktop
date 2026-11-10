@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Windows
+Comment=Window Side's view of the Windows desktop
+Exec=ws console
+Icon=window-side
+Terminal=false
+Type=Application
+NoDisplay=true
+StartupWMClass=window-side-viewer

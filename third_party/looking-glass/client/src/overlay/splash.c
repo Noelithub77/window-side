@@ -32,7 +32,7 @@
 #include "common/stringutils.h"
 #include "common/time.h"
 
-#include "resources/lg-logo.svg.h"
+#include "resources/window-side-logo.svg.h"
 
 #include <string.h>
 #include <math.h>
@@ -108,14 +108,13 @@ static bool splash_init(void ** udata, const void * params)
   l_state              = show ? SPLASH_VISIBLE : SPLASH_HIDDEN;
   l_fadeStart          = 0;
 
-  overlayLoadSVG(b_lg_logo_svg, b_lg_logo_svg_size, &l_logo, 200, 200);
+  overlayLoadSVG(b_window_side_logo_svg, b_window_side_logo_svg_size, &l_logo, 160, 160);
   calcRadialVectors(l_vectors, ARRAY_LENGTH(l_vectors));
 
   l_tagline  = stringlist_new(false);
   l_footline = stringlist_new(false);
 
-  stringlist_push(l_tagline, "Looking Glass");
-  stringlist_push(l_tagline, (char *)LG_WEBSITE_URL);
+  stringlist_push(l_tagline, "Window Side");
 
   stringlist_push(l_footline, (char *)LG_VERSION_STR);
   stringlist_push(l_footline, (char *)LG_COPYRIGHT_STR);
@@ -205,7 +204,7 @@ static int splash_render(void * udata, bool interactive, struct Rect * windowRec
   };
 
   const ImU32 innerColor = igColorConvertFloat4ToU32((ImVec4){
-      0.234375f, 0.015625f, 0.425781f, alpha});
+      0.04f, 0.16f, 0.14f, alpha});
   const ImU32 outerColor = igColorConvertFloat4ToU32((ImVec4){
       0.0f, 0.0f, 0.0f, alpha});
   const ImU32 imageColor = igColorConvertFloat4ToU32((ImVec4){

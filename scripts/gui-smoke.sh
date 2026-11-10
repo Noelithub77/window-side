@@ -19,8 +19,8 @@ cleanup() {
 trap cleanup EXIT
 omabox up "$box" --no-shell --net isolated --size 1280x900@60 --seed "$binary:.local/bin/ws" --json > "$output/box.json"
 omabox run -b "$box" -d -- env WS_GUI_FIXTURE=setup WS_GUI_SMOKE_OUTPUT=/tmp/window-side-smoke.json GDK_BACKEND=wayland sh -c 'exec "$HOME/.local/bin/ws"'
-omabox wait -b "$box" --timeout 40s window class:ws >/dev/null
+omabox wait -b "$box" --timeout 40s window class:window-side >/dev/null
 omabox wait -b "$box" --timeout 40s cmd -- test -s /tmp/window-side-smoke.json >/dev/null
 omabox run -b "$box" -- cat /tmp/window-side-smoke.json > "$output/rendering.json"
-omabox shot -b "$box" --window class:ws -o "$output/window.png" >/dev/null
+omabox shot -b "$box" --window class:window-side -o "$output/window.png" >/dev/null
 jq -e '.windowIconMatches and .webgl and .lottie and .clipboard and (.errors | length == 0)' "$output/rendering.json" >/dev/null

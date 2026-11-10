@@ -11,7 +11,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$source_root/target/libexec/window-sid
 chmod +x "$source_root/target/libexec/window-side/window-side-viewer"
 cp "$root/install.sh" "$root/LICENSE" "$root/README.md" "$source_root/"
 cp "$root/scripts/package-release.sh" "$root/scripts/system-deps.sh" "$source_root/scripts/"
-cp "$root/packaging/window-side.desktop" "$source_root/packaging/"
+cp "$root/packaging/window-side.desktop" "$root/packaging/window-side-viewer.desktop" "$source_root/packaging/"
 cp -R "$root/icons" "$source_root/"
 cp -R "$root/docs" "$source_root/"
 printf '#!/usr/bin/env bash\nprintf "ws 0.1.0\\n"\n' > "$source_root/target/release/ws"

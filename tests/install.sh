@@ -73,6 +73,8 @@ done
 grep -Fxq 'Icon=window-side' "$prefix/share/applications/window-side.desktop"
 desktop-file-validate "$prefix/share/applications/window-side.desktop"
 grep -Fxq "Exec=\"$prefix/bin/ws\" launch" "$prefix/share/applications/window-side.desktop"
+# The viewer's entry is what gives its window the app icon.
+grep -Fxq "Exec=\"$prefix/bin/ws\" console" "$prefix/share/applications/window-side-viewer.desktop"
 # Exercise an optional cache helper failure without touching system icon folders.
 cat > "$fixture/bin/gtk-update-icon-cache" <<'CACHE'
 #!/usr/bin/env bash

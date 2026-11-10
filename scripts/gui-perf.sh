@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup EXIT
 omabox up "$box" --no-shell --net isolated --size 1280x900@60 --seed "$binary:.local/bin/ws" --json > "$output/box.json"
 omabox run -b "$box" -d -- env WS_GUI_FIXTURE=status WS_GUI_PERF_OUTPUT=/tmp/window-side-perf.json GDK_BACKEND=wayland sh -c 'exec "$HOME/.local/bin/ws"'
-omabox wait -b "$box" --timeout 40s window class:ws >/dev/null
+omabox wait -b "$box" --timeout 40s window class:window-side >/dev/null
 omabox wait -b "$box" --timeout 90s cmd -- test -s /tmp/window-side-perf.json >/dev/null
 omabox run -b "$box" -- cat /tmp/window-side-perf.json > "$output/perf.json"
 jq -e '.errors | length == 0' "$output/perf.json" >/dev/null

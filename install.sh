@@ -105,7 +105,7 @@ if [[ -f "$receipt" && ! -L "$receipt" && -f "$prefix/bin/ws" && ! -L "$prefix/b
 fi
 icon_files=("$root"/icons/hicolor/*/apps/window-side.*)
 [[ -f "${icon_files[0]}" ]] || { echo 'Missing packaged icons/hicolor tree' >&2; exit 1; }
-files=(bin/ws libexec/window-side/window-side-viewer share/applications/window-side.desktop share/licenses/window-side/LICENSE share/licenses/window-side/looking-glass/LICENSE share/window-side/install-receipt)
+files=(bin/ws libexec/window-side/window-side-viewer share/applications/window-side.desktop share/applications/window-side-viewer.desktop share/licenses/window-side/LICENSE share/licenses/window-side/looking-glass/LICENSE share/window-side/install-receipt)
 installed_viewer="$prefix/libexec/window-side/window-side-viewer"
 if [[ -e "$installed_viewer" || -L "$installed_viewer" ]]; then
   viewer_owned=false
@@ -153,24 +153,32 @@ if ! $dry_run; then
   done
   mkdir -p -- "$prefix/bin" "$prefix/libexec/window-side" "$prefix/share/applications" "$prefix/share/licenses/window-side/looking-glass" "$prefix/share/window-side"
   temporary=$(mktemp "$prefix/bin/.ws.XXXXXXXX")
-  trap 'rm -f -- "${temporary:-}" "${desktop_temporary:-}" "${license_temporary:-}" "${receipt_temporary:-}" "${icon_temporary:-}"' EXIT
+  trap 'rm -f -- "${temporary:-}" "${desktop_temporary:-}" "${viewer_desktop_temporary:-}" "${license_temporary:-}" "${receipt_temporary:-}" "${icon_temporary:-}"' EXIT
   install -m 755 -- "$binary" "$temporary"
-  desktop_temporary=$(mktemp --suffix=.desktop "$prefix/share/applications/.window-side.XXXXXXXX")
   executable="$prefix/bin/ws"
   escaped=$(printf '%s' "$executable" | sed 's/[\\"`$]/\\&/g; s/%/%%/g')
-  while IFS= read -r line; do
-    case "$line" in
-      Exec=ws*) printf 'Exec="%s"%s\n' "$escaped" "${line#Exec=ws}" ;;
-      *) printf '%s\n' "$line" ;;
-    esac
-  done < "$root/packaging/window-side.desktop" > "$desktop_temporary"
-  chmod 644 "$desktop_temporary"
-  if command -v desktop-file-validate >/dev/null; then desktop-file-validate "$desktop_temporary"; fi
+  # Writes a desktop entry with Exec pointing at this prefix's ws, ready to move into place.
+  render_desktop() {
+    local temporary
+    temporary=$(mktemp --suffix=.desktop "$prefix/share/applications/.window-side.XXXXXXXX")
+    while IFS= read -r line; do
+      case "$line" in
+        Exec=ws*) printf 'Exec="%s"%s\n' "$escaped" "${line#Exec=ws}" ;;
+        *) printf '%s\n' "$line" ;;
+      esac
+    done < "$root/packaging/$1" > "$temporary"
+    chmod 644 "$temporary"
+    if command -v desktop-file-validate >/dev/null; then desktop-file-validate "$temporary"; fi
+    printf '%s' "$temporary"
+  }
+  desktop_temporary=$(render_desktop window-side.desktop)
+  viewer_desktop_temporary=$(render_desktop window-side-viewer.desktop)
   mv -Tf -- "$temporary" "$prefix/bin/ws"
   temporary=$(mktemp "$prefix/libexec/window-side/.viewer.XXXXXXXX")
   install -m 755 -- "$viewer" "$temporary"
   mv -Tf -- "$temporary" "$installed_viewer"
   mv -Tf -- "$desktop_temporary" "$prefix/share/applications/window-side.desktop"
+  mv -Tf -- "$viewer_desktop_temporary" "$prefix/share/applications/window-side-viewer.desktop"
   # Replace license symlinks instead of writing through them.
   license_temporary=$(mktemp "$prefix/share/licenses/window-side/.license.XXXXXXXX")
   install -m 644 -- "$root/LICENSE" "$license_temporary"

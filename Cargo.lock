@@ -5135,6 +5135,7 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "clap",
+ "glib",
  "ksni",
  "notify-rust",
  "oo7",

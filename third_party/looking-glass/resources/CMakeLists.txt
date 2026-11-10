@@ -15,7 +15,7 @@ function(build_resources)
 endfunction()
 
 build_resources(
-	lg-logo.svg
+	window-side-logo.svg
 	status/spice.svg
 	status/recording.svg
 	no-input-cursor/16.xcur

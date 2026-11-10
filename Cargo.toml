@@ -20,6 +20,8 @@ base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive"] }
 tauri-plugin-clipboard-manager = "=2.5.0"
 tauri = { version = "=2.12.4", features = ["devtools", "image-png"] }
+# Sets the Wayland app ID so the compositor matches window-side.desktop.
+glib = "=0.18.5"
 specta = { version = "=2.0.0-rc.25", features = ["derive", "function"] }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
 specta-typescript = "=0.0.12"

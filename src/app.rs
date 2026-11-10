@@ -26,6 +26,8 @@ pub fn run() -> bool {
     match launch() { Ok(()) => true, Err(e) => { eprintln!("window-side: {e:#}"); false } }
 }
 fn launch() -> anyhow::Result<()> {
+    // GTK uses the program name ("ws") as the app ID unless told otherwise.
+    glib::set_prgname(Some("window-side"));
     let fixture = std::env::var("WS_GUI_FIXTURE").ok().map(|s| fixture::Fixture::new(&s)).transpose()?;
     let isolated = fixture.is_some();
     let (sender, receiver) = mpsc::channel();
