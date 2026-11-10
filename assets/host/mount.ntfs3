@@ -1,0 +1,34 @@
+#!/bin/sh
+# Installed by ops disk:integration. Other NTFS volumes keep normal mount behavior.
+set -eu
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+part=$(readlink -f '/dev/disk/by-uuid/@UUID@') || exec mount -i -t ntfs3 "$@"
+source=$(readlink -f "$1")
+[ "$source" = "$part" ] || exec mount -i -t ntfs3 "$@"
+# Query libvirt before locking: hooks must never wait on a client of their own daemon.
+vm_state=$(LC_ALL=C timeout 10 virsh -c qemu:///system domstate '@DOMAIN@') || {
+    echo 'Cannot verify Windows is off; refusing to mount its drive.' >&2; exit 1;
+}
+[ "$vm_state" = 'shut off' ] || {
+    echo 'Windows must be fully shut down before mounting its drive.' >&2; exit 1;
+}
+state='/run/window-side-ntfs-@UUID@'
+mkdir -p -m 700 "$state"
+exec 9>"$state/lock"
+flock -w 40 9
+[ ! -e "$state/busy" ] || {
+    echo 'Windows is starting or using its drive; refusing to mount it.' >&2; exit 1;
+}
+mount -i -t ntfs3 "$@" && exit 0
+# A failed remount must never cause repairs to a mounted filesystem.
+if findmnt -rn -S "$part" >/dev/null; then exit 1; fi
+info=$(ntfsinfo -f -m "$part") || exit 1
+printf '%s\n' "$info" | grep -q 'Volume Flags:.*DIRTY' || exit 1
+listing=$(ntfsls -f "$part") || exit 1
+if printf '%s\n' "$listing" | grep -qix hiberfil.sys; then
+    echo 'Windows has a hibernation file; automatic repair refused.' >&2; exit 1
+fi
+timeout 30 ntfsfix -d "$part" || exit 1
+logger -t window-side "Repaired dirty Windows volume before mount: $part"
+mount -i -t ntfs3 "$@"

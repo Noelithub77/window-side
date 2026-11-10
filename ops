@@ -24,6 +24,7 @@ Usage: ./ops <command>
   site:deploy [--dry-run]  Build and deploy the landing page to window-side.allpyq.in with cf
   icons                 Regenerate tracked icons with rsvg-convert (dev only)
   icons:check           Reject stale generated icons
+  disk:integration --preview|--apply  Guard and repair Dolphin mounts of Windows (Arch)
   check                 Run unit tests, Clippy and CLI/installer fixtures; no VM or desktop actions
   looking-glass:build   Build the vendored app-owned viewer
   looking-glass:test    Run client input regression tests with synthetic support
@@ -69,7 +70,9 @@ HELP
   site:deploy) shift; pnpm -C site lint; pnpm -C site build; exec pnpm -C site exec cf deploy --prebuilt "$@" ;;
   icons) shift; exec bash "$root/scripts/icons.sh" "$@" ;;
   icons:check) shift; exec bash "$root/scripts/icons.sh" check "$@" ;;
+  disk:integration) shift; exec bash "$root/scripts/disk-integration.sh" "$@" ;;
   check)
+    python3 "$root/tests/ntfs-mount.py"
     "$root/ops" looking-glass:test
     "$root/ops" icons:check
     "$root/ops" ui:check
@@ -83,6 +86,7 @@ HELP
     exec bash "$root/tests/install.sh"
     ;;
   check:release)
+    python3 "$root/tests/ntfs-mount.py"
     "$root/ops" looking-glass:test
     "$root/ops" icons:check
     "$root/ops" ui:check

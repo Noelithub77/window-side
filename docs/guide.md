@@ -16,9 +16,23 @@ For a separate Windows drive, setup also installs a libvirt hook
 (`/etc/libvirt/hooks/qemu.d/window-side-dirty`) and restarts libvirt once so it
 is read. After the VM stops, the hook clears the dirty flag Windows leaves on
 its volume, so Linux can mount it without `force`. It uses `ntfsfix -d` from
-`ntfs-3g`: this resets the flag only and is not a chkdsk repair. It skips a
+`ntfs-3g`: this performs limited NTFS repairs and clears the flag; it is not a
+full chkdsk check. It skips a
 volume Linux has mounted, a hibernated Windows (`hiberfil.sys`) and anything it
 cannot read. Never run `ntfsfix` by hand while the VM is running.
+
+For automatic repair when clicking the Windows drive in Dolphin, including after
+native Windows boots, run `./ops build`, then `./ops disk:integration --preview`
+and `./ops disk:integration --apply`. This opt-in installer currently supports
+hosts where `/sbin` resolves to `/usr/bin` (including Arch). It installs
+`/usr/bin/mount.ntfs3`; existing third-party helpers are never overwritten.
+UDisks uses this standard mount helper without a Dolphin menu or custom action.
+Only the configured Windows UUID is eligible for repair, after a normal mount
+fails and only while system libvirt confirms Windows is shut off. A shared lock
+and startup marker prevent VM startup racing the mount. Hibernated, mounted,
+unreadable and non-dirty volumes are never automatically repaired. This is a
+limited `ntfsfix` repair, not a full filesystem check. Re-run the installer if
+the configured Windows UUID or VM name changes.
 
 First boot uses SATA and an emulated network adapter until the guest drivers
 are installed. The desktop guides the flow; agents can use:
